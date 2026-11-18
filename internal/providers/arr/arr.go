@@ -106,13 +106,16 @@ type page[T any] struct {
 }
 
 // eachPage reads every page of a paged resource and calls fn for each record, in order.
-// It sets the page and pageSize parameters on q.
+// It sets the page and pageSize parameters on q. It stops on an empty page or once it has
+// received as many records as the server reports in total, so a server that sends fewer
+// records per page than asked for is still read to the end.
 func eachPage[T any](ctx context.Context, c *Client, path string, q url.Values, fn func(T)) error {
 	size := c.PageSize
 	if size <= 0 {
 		size = defaultPageSize
 	}
 	q.Set("pageSize", strconv.Itoa(size))
+	received := 0
 	for pageNo := 1; ; pageNo++ {
 		q.Set("page", strconv.Itoa(pageNo))
 		var p page[T]
@@ -122,7 +125,8 @@ func eachPage[T any](ctx context.Context, c *Client, path string, q url.Values, 
 		for _, r := range p.Records {
 			fn(r)
 		}
-		if len(p.Records) == 0 || pageNo*size >= p.TotalRecords {
+		received += len(p.Records)
+		if len(p.Records) == 0 || received >= p.TotalRecords {
 			return nil
 		}
 	}

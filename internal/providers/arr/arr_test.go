@@ -263,3 +263,41 @@ func TestLinksFailsWhenHistoryFails(t *testing.T) {
 		t.Errorf("err = %v, want an error that names the history", err)
 	}
 }
+
+func TestLinksReadsEveryPageWhenTheServerCapsThePageSize(t *testing.T) {
+	var history []string
+	for i := 1; i <= 5; i++ {
+		history = append(history, fmt.Sprintf(`{"eventType":"grabbed","downloadId":"H%d","movieId":%d}`, i, i))
+	}
+	const limit = 2 // the server sends at most this many records, whatever pageSize asks for
+	var historyQueries []url.Values
+	c := newClient(t, map[string]http.HandlerFunc{
+		"/api/v3/history": func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query()
+			historyQueries = append(historyQueries, q)
+			page, _ := strconv.Atoi(q.Get("page"))
+			start := (page - 1) * limit
+			var slice []string
+			if start >= 0 && start < len(history) {
+				slice = history[start:min(start+limit, len(history))]
+			}
+			fmt.Fprintf(w, `{"page":%d,"pageSize":%d,"totalRecords":%d,"records":[%s]}`,
+				page, limit, len(history), strings.Join(slice, ","))
+		},
+		"/api/v3/queue": paged(nil, nil),
+	})
+
+	links, err := c.Links(ctx, LinkOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 5; i++ {
+		id := fmt.Sprintf("h%d", i)
+		if !reflect.DeepEqual(links.Grabbed[id], []int{i}) {
+			t.Errorf("Grabbed[%s] = %v, want [%d]: every record must be read", id, links.Grabbed[id], i)
+		}
+	}
+	if len(historyQueries) != 3 {
+		t.Errorf("made %d history requests, want 3 pages of 2", len(historyQueries))
+	}
+}

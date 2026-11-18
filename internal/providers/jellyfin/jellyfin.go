@@ -112,21 +112,23 @@ func (it itemJSON) externalIDs() domain.ExternalIDs {
 	return ids
 }
 
-// items returns every item of one type as one user sees it, reading page by page.
+// items returns every item of one type as one user sees it, reading page by page. Each
+// request starts after the items received so far, so a server that sends fewer items than
+// asked for skips none.
 func (c *Client) items(ctx context.Context, userID, itemType string) ([]itemJSON, error) {
 	size := c.PageSize
 	if size <= 0 {
 		size = defaultPageSize
 	}
 	var all []itemJSON
-	for start := 0; ; start += size {
+	for {
 		q := url.Values{
 			"userId":           {userID},
 			"IncludeItemTypes": {itemType},
 			"Recursive":        {"true"},
 			"Fields":           {"ProviderIds"},
 			"EnableUserData":   {"true"},
-			"StartIndex":       {strconv.Itoa(start)},
+			"StartIndex":       {strconv.Itoa(len(all))},
 			"Limit":            {strconv.Itoa(size)},
 		}
 		var page struct {

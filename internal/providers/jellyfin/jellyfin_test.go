@@ -20,6 +20,8 @@ var ctx = context.Background()
 type fakeJellyfin struct {
 	items    map[string][]string
 	requests map[string]int // "userID/ItemType" -> number of /Items requests
+	// maxPerPage, when set, caps the items in one response whatever Limit asks for.
+	maxPerPage int
 }
 
 func (f *fakeJellyfin) handler(t *testing.T) http.Handler {
@@ -52,6 +54,9 @@ func (f *fakeJellyfin) handler(t *testing.T) http.Handler {
 		all := f.items[key]
 		start, _ := strconv.Atoi(q.Get("StartIndex"))
 		limit, _ := strconv.Atoi(q.Get("Limit"))
+		if f.maxPerPage > 0 {
+			limit = min(limit, f.maxPerPage)
+		}
 		var slice []string
 		if start < len(all) {
 			slice = all[start:min(start+limit, len(all))]
@@ -196,5 +201,30 @@ func TestLibraryWithoutUsersAsksNothing(t *testing.T) {
 	lib, err := start(t, f, "k").Library(ctx, nil)
 	if err != nil || len(lib.Movies)+len(lib.Series)+len(lib.Episodes) != 0 || len(f.requests) != 0 {
 		t.Errorf("Library(nil) = %+v, %v with %d requests; want empty and no requests", lib, err, len(f.requests))
+	}
+}
+
+func TestLibraryReadsEveryPageWhenTheServerCapsThePageSize(t *testing.T) {
+	var movies []string
+	for i := 1; i <= 5; i++ {
+		movies = append(movies, fmt.Sprintf(`{"Id":"m%d","Name":"Movie %d","UserData":{"Played":true}}`, i, i))
+	}
+	f := &fakeJellyfin{items: map[string][]string{"a/Movie": movies}, maxPerPage: 2}
+
+	lib, err := start(t, f, "k").Library(ctx, []string{"a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, m := range lib.Movies {
+		seen[m.ID]++
+	}
+	for i := 1; i <= 5; i++ {
+		if id := fmt.Sprintf("m%d", i); seen[id] != 1 {
+			t.Errorf("movie %s appears %d times, want exactly once", id, seen[id])
+		}
+	}
+	if len(lib.Movies) != 5 {
+		t.Errorf("got %d movies, want 5", len(lib.Movies))
 	}
 }
