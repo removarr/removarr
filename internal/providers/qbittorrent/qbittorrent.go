@@ -49,7 +49,7 @@ func New(baseURL, username, password string, timeout time.Duration) (*Client, er
 		baseURL:  baseURL,
 		username: username,
 		password: password,
-		http:     &http.Client{Jar: jar, Timeout: timeout},
+		http:     &http.Client{Jar: jar, Timeout: timeout, CheckRedirect: httpjson.SameHostRedirects},
 	}, nil
 }
 

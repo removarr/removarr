@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -174,5 +175,26 @@ func TestBasePathIsKept(t *testing.T) {
 	}
 	if got, err := c.Downloads(ctx); err != nil || len(got) != 1 {
 		t.Errorf("behind a base path: %d downloads, %v", len(got), err)
+	}
+}
+
+func TestARedirectToAnotherHostIsNotFollowed(t *testing.T) {
+	var reached atomic.Int32
+	b := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached.Add(1) }))
+	t.Cleanup(b.Close)
+	a := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, b.URL, http.StatusFound)
+	}))
+	t.Cleanup(a.Close)
+
+	c, err := New(a.URL, "", "", 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Test(context.Background()); err == nil {
+		t.Error("Test must fail when qBittorrent redirects to another host")
+	}
+	if n := reached.Load(); n != 0 {
+		t.Errorf("the other host received %d requests, want none", n)
 	}
 }

@@ -3,6 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -75,5 +78,26 @@ func TestTesterAndMediaServer(t *testing.T) {
 	}
 	if _, err := apps(map[string]string{}).MediaServer(ctx); !errors.Is(err, providers.ErrNotConfigured) {
 		t.Errorf("MediaServer without settings: error = %v, want ErrNotConfigured", err)
+	}
+}
+
+func TestAnAppThatRedirectsToAnotherHostIsNotFollowed(t *testing.T) {
+	var reached atomic.Int32
+	b := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached.Add(1) }))
+	defer b.Close()
+	a := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, b.URL, http.StatusFound)
+	}))
+	defer a.Close()
+
+	tester, err := apps(map[string]string{"sonarr.url": a.URL, "sonarr.api_key": "k"}).Tester(ctx, config.AppSonarr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tester.Test(ctx); err == nil {
+		t.Error("Test must fail when the app redirects to another host")
+	}
+	if n := reached.Load(); n != 0 {
+		t.Errorf("the other host received %d requests, want none (the API key must not leave the app)", n)
 	}
 }

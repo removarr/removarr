@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/removarr/removarr/internal/config"
+	"github.com/removarr/removarr/internal/httpjson"
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/providers/jellyfin"
 	"github.com/removarr/removarr/internal/providers/qbittorrent"
@@ -22,7 +23,9 @@ type Apps struct {
 	Timeout time.Duration // limit for one request to an app
 }
 
-func (a *Apps) client() *http.Client { return &http.Client{Timeout: a.Timeout} }
+func (a *Apps) client() *http.Client {
+	return &http.Client{Timeout: a.Timeout, CheckRedirect: httpjson.SameHostRedirects}
+}
 
 // Providers returns a client for every configured app. The others stay nil.
 func (a *Apps) Providers(ctx context.Context) (scanner.Providers, error) {

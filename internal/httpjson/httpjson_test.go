@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -80,5 +81,47 @@ func TestParseTime(t *testing.T) {
 		if got := ParseTime(in); got != nil {
 			t.Errorf("ParseTime(%q) = %v, want nil", in, got)
 		}
+	}
+}
+
+func TestSameHostRedirectsRefusesAnotherHost(t *testing.T) {
+	var reached atomic.Int32
+	b := serve(t, func(w http.ResponseWriter, r *http.Request) { reached.Add(1) })
+	a := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, b.URL, http.StatusFound)
+	})
+	c := &http.Client{CheckRedirect: SameHostRedirects}
+	if err := Get(ctx, c, a.URL, http.Header{"X-Api-Key": {"k"}}, nil); err == nil {
+		t.Error("a redirect to another host must fail")
+	}
+	if n := reached.Load(); n != 0 {
+		t.Errorf("the other host received %d requests, want none", n)
+	}
+}
+
+func TestSameHostRedirectsFollowsTheSameHost(t *testing.T) {
+	a := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/old" {
+			http.Redirect(w, r, "/new", http.StatusFound)
+			return
+		}
+		w.Write([]byte(`{"name":"moved"}`))
+	})
+	c := &http.Client{CheckRedirect: SameHostRedirects}
+	var out struct {
+		Name string `json:"name"`
+	}
+	if err := Get(ctx, c, a.URL+"/old", nil, &out); err != nil || out.Name != "moved" {
+		t.Errorf("Get = %v, %+v; want the redirected body", err, out)
+	}
+}
+
+func TestSameHostRedirectsStopsAfterTenRedirects(t *testing.T) {
+	a := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/loop", http.StatusFound)
+	})
+	c := &http.Client{CheckRedirect: SameHostRedirects}
+	if err := Get(ctx, c, a.URL, nil, nil); err == nil {
+		t.Error("an endless redirect loop must fail")
 	}
 }
