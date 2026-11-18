@@ -104,14 +104,15 @@ func LoadEnv(getenv func(string) string) (Env, error) {
 
 // NormalizeURL validates an app's base URL and removes trailing slashes, the query and the
 // fragment. A path prefix such as /sonarr is kept. A URL with a username or password is
-// rejected, because the API would return it. The errors are fixed texts: they never repeat
+// rejected, because the API would return it. So is a URL with no host name or with a path
+// starting "//", which is a scheme written twice or a stray double slash. The errors are fixed texts: they never repeat
 // the value, which may hold a credential.
 func NormalizeURL(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err == nil && u.User != nil {
 		return "", errors.New("must not contain a username or password")
 	}
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || strings.HasPrefix(u.Path, "//") {
 		return "", errors.New("not an http or https URL")
 	}
 	u.RawQuery, u.Fragment = "", ""

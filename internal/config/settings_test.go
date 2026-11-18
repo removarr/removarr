@@ -80,6 +80,18 @@ func TestSetConnRejectsABadURL(t *testing.T) {
 	}
 }
 
+func TestSetConnRejectsADoubledScheme(t *testing.T) {
+	s, st := service(nil)
+	err := s.SetConn(ctx, field(t, AppSonarr, "url"), "http://http://pi:8989")
+	var fe *domain.FieldError
+	if !errors.As(err, &fe) || fe.Field != "connections.sonarr.url" {
+		t.Fatalf("err = %v, want a FieldError for connections.sonarr.url", err)
+	}
+	if len(st) != 0 {
+		t.Errorf("nothing must be saved on error, store = %v", st)
+	}
+}
+
 func TestSetConnRejectsURLCredentialsWithoutEchoingThem(t *testing.T) {
 	s, st := service(nil)
 	err := s.SetConn(ctx, field(t, AppSonarr, "url"), "http://user:secret@pi:8989")

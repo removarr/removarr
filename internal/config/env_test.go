@@ -94,6 +94,37 @@ func TestNormalizeURL(t *testing.T) {
 	}
 }
 
+// malformedURLs parse, but cannot be reached: a scheme written twice, a stray double slash
+// before the path, or no host name.
+var malformedURLs = []string{
+	"http://http://pi:8989",
+	"https://http://pi:8989",
+	"http://http//pi:8989",
+	"http://pi:8989//sonarr",
+	"http://:8989",
+}
+
+func TestNormalizeURLRejectsDoubledSchemeAndMissingHost(t *testing.T) {
+	for _, in := range malformedURLs {
+		got, err := NormalizeURL(in)
+		if err == nil {
+			t.Errorf("NormalizeURL(%q) = %q, want an error", in, got)
+		} else if err.Error() != "not an http or https URL" {
+			t.Errorf("NormalizeURL(%q) error = %q, want the fixed message", in, err)
+		}
+	}
+}
+
+func TestLoadEnvRejectsDoubledSchemeNamingTheVariable(t *testing.T) {
+	_, err := LoadEnv(env(map[string]string{"REMOVARR_SONARR_URL": "http://http://pi:8989"}))
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if !strings.Contains(err.Error(), "REMOVARR_SONARR_URL") {
+		t.Errorf("error %q must name the variable", err)
+	}
+}
+
 func TestNormalizeURLRejectsCredentialsAndNeverEchoesTheInput(t *testing.T) {
 	withCredentials := []string{
 		"http://user:secret@pi:8989",
@@ -107,6 +138,7 @@ func TestNormalizeURLRejectsCredentialsAndNeverEchoesTheInput(t *testing.T) {
 		}
 	}
 	rejected := append([]string{"", "pi:8989", "ftp://pi", "http://", "sonarr", "secret", "pi:secret@8989"}, withCredentials...)
+	rejected = append(rejected, malformedURLs...)
 	for _, in := range rejected {
 		_, err := NormalizeURL(in)
 		if err == nil {
