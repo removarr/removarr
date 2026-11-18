@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/removarr/removarr/internal/domain"
@@ -73,6 +74,21 @@ func TestSetConnRejectsABadURL(t *testing.T) {
 	var fe *domain.FieldError
 	if !errors.As(err, &fe) || fe.Field != "connections.sonarr.url" {
 		t.Fatalf("err = %v, want a FieldError for connections.sonarr.url", err)
+	}
+	if len(st) != 0 {
+		t.Errorf("nothing must be saved on error, store = %v", st)
+	}
+}
+
+func TestSetConnRejectsURLCredentialsWithoutEchoingThem(t *testing.T) {
+	s, st := service(nil)
+	err := s.SetConn(ctx, field(t, AppSonarr, "url"), "http://user:secret@pi:8989")
+	var fe *domain.FieldError
+	if !errors.As(err, &fe) || fe.Field != "connections.sonarr.url" {
+		t.Fatalf("err = %v, want a FieldError for connections.sonarr.url", err)
+	}
+	if strings.Contains(err.Error(), "secret") || strings.Contains(fe.Message, "secret") {
+		t.Errorf("error %q must not contain the password", err)
 	}
 	if len(st) != 0 {
 		t.Errorf("nothing must be saved on error, store = %v", st)

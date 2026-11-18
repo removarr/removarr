@@ -3,6 +3,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -102,11 +103,16 @@ func LoadEnv(getenv func(string) string) (Env, error) {
 }
 
 // NormalizeURL validates an app's base URL and removes trailing slashes, the query and the
-// fragment. A path prefix such as /sonarr is kept.
+// fragment. A path prefix such as /sonarr is kept. A URL with a username or password is
+// rejected, because the API would return it. The errors are fixed texts: they never repeat
+// the value, which may hold a credential.
 func NormalizeURL(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
+	if err == nil && u.User != nil {
+		return "", errors.New("must not contain a username or password")
+	}
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", fmt.Errorf("%q is not an http or https URL", raw)
+		return "", errors.New("not an http or https URL")
 	}
 	u.RawQuery, u.Fragment = "", ""
 	return strings.TrimRight(u.String(), "/"), nil

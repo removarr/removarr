@@ -94,6 +94,40 @@ func TestNormalizeURL(t *testing.T) {
 	}
 }
 
+func TestNormalizeURLRejectsCredentialsAndNeverEchoesTheInput(t *testing.T) {
+	withCredentials := []string{
+		"http://user:secret@pi:8989",
+		"http://user@pi:8989",
+		"https://user:secret@pi:8989/sonarr",
+		"ftp://user:secret@pi",
+	}
+	for _, in := range withCredentials {
+		if got, err := NormalizeURL(in); err == nil {
+			t.Errorf("NormalizeURL(%q) = %q, want an error", in, got)
+		}
+	}
+	rejected := append([]string{"", "pi:8989", "ftp://pi", "http://", "sonarr", "secret", "pi:secret@8989"}, withCredentials...)
+	for _, in := range rejected {
+		_, err := NormalizeURL(in)
+		if err == nil {
+			continue
+		}
+		if in != "" && strings.Contains(err.Error(), in) || strings.Contains(err.Error(), "secret") {
+			t.Errorf("NormalizeURL(%q) error %q must not echo the input", in, err)
+		}
+	}
+}
+
+func TestLoadEnvRejectsURLCredentialsWithoutEchoingThem(t *testing.T) {
+	_, err := LoadEnv(env(map[string]string{"REMOVARR_SONARR_URL": "http://user:secret@pi:8989"}))
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if !strings.Contains(err.Error(), "REMOVARR_SONARR_URL") || strings.Contains(err.Error(), "secret") {
+		t.Errorf("error %q must name the variable and not contain the password", err)
+	}
+}
+
 func TestFieldsAreConsistent(t *testing.T) {
 	keys, envs := map[string]bool{}, map[string]bool{}
 	apps := map[string]bool{}

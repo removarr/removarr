@@ -123,6 +123,27 @@ func TestPutSettingsRejectsBadInputAndSavesNothing(t *testing.T) {
 	}
 }
 
+func TestPutSettingsRejectsURLCredentialsAndNeverEchoesThem(t *testing.T) {
+	h := newHarness(t, nil)
+	rec := h.do(http.MethodPut, "/api/settings", `{"connections":{"sonarr":{"url":"http://user:secret@pi:8989"}}}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	if got := decode[errorBody](t, rec); got.Field != "connections.sonarr.url" {
+		t.Errorf("field = %q, want connections.sonarr.url", got.Field)
+	}
+	if strings.Contains(rec.Body.String(), "secret") {
+		t.Errorf("the response must not contain the password: %s", rec.Body)
+	}
+	get := h.do(http.MethodGet, "/api/settings", "")
+	if v := decode[settingsBody](t, get).Connections["sonarr"]["url"]; v.Set || v.Value != "" {
+		t.Errorf("sonarr url = %+v, want not set", v)
+	}
+	if strings.Contains(get.Body.String(), "secret") {
+		t.Errorf("settings must not contain the password: %s", get.Body)
+	}
+}
+
 func TestConnectionTest(t *testing.T) {
 	h := newHarness(t, nil)
 	h.apps.testers[config.AppSonarr] = testerFunc(func(context.Context) (string, error) { return "Sonarr 4.0.9", nil })
