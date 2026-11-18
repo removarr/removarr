@@ -81,6 +81,10 @@ func TestMoviesSkips(t *testing.T) {
 		{"grace period not over", func(in *MoviesInput) { in.Rules.GraceDays = 30 }, 0, 0},
 		{"no file", func(in *MoviesInput) { in.Snapshot.Movies[0].File = nil }, 0, 0},
 		{"no match on the media server", func(in *MoviesInput) { in.Library.Movies = nil }, 0, 1},
+		{"no external IDs on either side", func(in *MoviesInput) {
+			in.Snapshot.Movies[0].IDs = domain.ExternalIDs{}
+			in.Library.Movies[0].IDs = domain.ExternalIDs{}
+		}, 0, 1},
 		{"protected by tag", func(in *MoviesInput) { in.Snapshot.Movies[0].Tags = []string{"Keep"} }, 1, 0},
 		{"protected by favourite", func(in *MoviesInput) {
 			st := played("2026-03-01T20:00:00Z")
