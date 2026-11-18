@@ -441,11 +441,80 @@ Approved by the owner on 2026-11-18. Versions are pinned in the implementation p
 | Repository | `github.com/removarr/removarr` | The owner's GitHub organisation. |
 | License | MIT | Simplest for others to reuse. |
 
-## 16. Assumptions to verify early in implementation
+## 16. Verified API behaviour
 
-Each of these is expected to hold but has not been checked against the running apps. The plan verifies them first, because the torrent rules depend on them.
+The four assumptions this design started from were checked on 2026-11-19 against the reference stack, read-only, at the end of stage 1.
 
-1. Sonarr and Radarr history expose the torrent hash on grab and import events, and make it possible to tell which download a current file was imported from.
-2. Sonarr's API can unmonitor individual episodes and a season. If unmonitoring a season does not also unmonitor its episodes, removarr does both explicitly.
-3. Jellyfin reports the played flag, last played date and favourite flag per user, and the external IDs, for movies and episodes.
-4. qBittorrent reports content path, ratio, seeding time, tracker, category and tags per torrent.
+| App | Version |
+|---|---|
+| Sonarr | 4.0.12 |
+| Radarr | 5.18.4 |
+| Jellyfin | 12.4.0 |
+| qBittorrent | 5.1.0 (Web API 2.11.4) |
+
+Library at the time: 277 movies (226 with a file), 134 series (about 3,950 episode files), 381 torrents, one media server user. A full scan took 18 seconds.
+
+**Result in one line:** assumptions 2, 3 and 4 hold. Assumption 1 holds for downloads the media managers imported themselves and does not hold for manual imports, which changes what the torrent list means. Section 16.1 has the detail and the decision it calls for.
+
+### 16.1 History links downloads to files: holds for automatic imports only
+
+Assumption: Sonarr and Radarr history expose the torrent hash on grab and import events, and make it possible to tell which download a current file was imported from.
+
+Observed:
+
+- Grab events and automatic import events carry the download ID. For a torrent it is the 40-character hash in upper case. qBittorrent reports the same hash in lower case, so removarr lower-cases both sides.
+- Import events carry the library file's ID (`data.fileId`). Older records lack it: 599 import records on the reference stack. For those the code takes an item's most recent import as the source of its current file, which linked 98 files.
+- History is returned newest first. The requested page size of 1,000 is honoured, smaller sizes too, and consecutive pages do not overlap.
+- Download IDs from other download clients appear in history (25 records from a usenet client). They never match a torrent and are ignored.
+- Completed downloads whose import is blocked or pending stay in the managers' queues: 25 downloads on the reference stack, 14 of them items the manager cannot match to a series or movie. removarr asks for those too, and a queued torrent is never listed (6.6).
+
+**Deviation.** History cannot tell where a file came from in two cases:
+
+- **Manual import.** The import event has a file ID and no download ID. On the reference stack this is about two thirds of the episode files that have an import record.
+- **A torrent added to the download client outside Sonarr and Radarr.** It has no history at all.
+
+The stage-1 code follows the history-only rule of 6.6, so in both cases a torrent that still holds library files is classed as unlinked or orphan. Measured on the reference stack by comparing each listed torrent's files with the library files by exact size:
+
+| List | Torrents listed | Hold files that are in the library | Hold none | No large file |
+|---|---|---|---|---|
+| Orphan | 27 (339 GB) | 14 (262 GB) | 10 (60 GB) | 3 (17 GB) |
+| Unlinked | 41 (712 GB) | 13 (614 GB) | 28 (97 GB) | 0 |
+
+So 27 of the 68 listed torrents, 876 of 1,050 GB, still hold library files. With hard links, removing such a torrent with its data frees no space and stops its seeding, while the list presents it as left behind.
+
+**This is not handled in stage 1.** Section 6.6 needs a decision before stage 2 plans any deletion. One API-only option: also treat a torrent as backing a library file when one of its files, as listed by the download client, has exactly the size of a library file reported by the media manager.
+
+### 16.2 Sonarr exposes monitoring per episode and per season: holds
+
+Assumption: Sonarr's API can unmonitor individual episodes and a season. If unmonitoring a season does not also unmonitor its episodes, removarr does both explicitly.
+
+Observed: each season object on a series and each episode carries a `monitored` field. Stage 1 only reads. Whether unmonitoring a season also unmonitors its episodes is still to be checked when stage 2 first changes it. Every series on the reference stack has a TVDB ID.
+
+### 16.3 Jellyfin reports watch state per user: holds
+
+Assumption: Jellyfin reports the played flag, last played date and favourite flag per user, and the external IDs, for movies and episodes.
+
+Observed:
+
+- The played flag, the last played date and the favourite flag are reported per user, with TMDB and IMDb IDs on movies, TVDB, IMDb and TMDB IDs on series, and TVDB and IMDb IDs on episodes.
+- The API key is accepted only in the header `Authorization: MediaBrowser Token="<key>"`. This version answers 401 to the older `X-Emby-Token` header.
+- The requested page size is honoured and the total is reported.
+- Cases the rules anticipated all occur in real data: a played episode with no last played date, items covering a range of episodes, specials, and one movie and one series with no external ID (counted as unmatched).
+
+### 16.4 qBittorrent reports the torrent fields: holds
+
+Assumption: qBittorrent reports content path, ratio, seeding time, tracker, category and tags per torrent.
+
+Observed: every torrent carries hash, name, size, state, category, tags, content path, added date, ratio, seeding time and tracker. Hashes are 40 characters of lower-case hex. The login was not exercised: the reference instance allows the local network without one.
+
+### 16.5 The three lists
+
+The lists of one scan were recomputed independently from the apps' raw answers and matched removarr's output exactly:
+
+| List | Rows | Notes |
+|---|---|---|
+| Watched movies | 45 | 3 movies with a file had no match on the media server |
+| Watched series | 18 | 10 of them still airing; no unmatched episodes |
+| Orphan torrents | 68 | 27 orphan and 41 unlinked; see 16.1 for what those two words can be trusted to mean |
+
+All 27 orphans are torrents outside the two categories the media managers use. Unless their categories are excluded in the settings, torrents that have nothing to do with the media library are listed.
