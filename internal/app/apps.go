@@ -3,10 +3,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/removarr/removarr/internal/config"
+	"github.com/removarr/removarr/internal/domain"
 	"github.com/removarr/removarr/internal/httpjson"
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/providers/jellyfin"
@@ -15,6 +17,9 @@ import (
 	"github.com/removarr/removarr/internal/providers/sonarr"
 	"github.com/removarr/removarr/internal/scanner"
 )
+
+// ErrIncomplete is the error of every read from an app whose connection is partly entered.
+var ErrIncomplete = errors.New("its connection settings are incomplete")
 
 // Apps builds clients for the apps removarr talks to. Settings are read on every call, so
 // a change made through the API takes effect on the next scan.
@@ -27,7 +32,32 @@ func (a *Apps) client() *http.Client {
 	return &http.Client{Timeout: a.Timeout, CheckRedirect: httpjson.SameHostRedirects}
 }
 
-// Providers returns a client for every configured app. The others stay nil.
+// incomplete stands in for an app whose connection is partly entered; every read fails
+// with ErrIncomplete. It exists so that a scan reports such an app as unreadable, never
+// as absent: an absent media manager's torrents count as orphans (spec 6.8 rule 5).
+type incomplete struct{}
+
+func (incomplete) Users(context.Context) ([]domain.User, error) { return nil, ErrIncomplete }
+func (incomplete) Library(context.Context, []string) (domain.Library, error) {
+	return domain.Library{}, ErrIncomplete
+}
+func (incomplete) Movies(context.Context) (domain.MovieSnapshot, error) {
+	return domain.MovieSnapshot{}, ErrIncomplete
+}
+func (incomplete) Series(context.Context) (domain.SeriesSnapshot, error) {
+	return domain.SeriesSnapshot{}, ErrIncomplete
+}
+func (incomplete) Downloads(context.Context) ([]domain.Download, error) { return nil, ErrIncomplete }
+
+var (
+	_ providers.MediaServer    = incomplete{}
+	_ providers.MovieManager   = incomplete{}
+	_ providers.SeriesManager  = incomplete{}
+	_ providers.DownloadClient = incomplete{}
+)
+
+// Providers returns a client for every configured app. An app with no setting at all stays
+// nil; an app whose settings are partly entered gets a stand-in whose reads fail.
 func (a *Apps) Providers(ctx context.Context) (scanner.Providers, error) {
 	var p scanner.Providers
 
@@ -37,6 +67,8 @@ func (a *Apps) Providers(ctx context.Context) (scanner.Providers, error) {
 	}
 	if ok {
 		p.MediaServer = jellyfin.New(c.URL, c.APIKey, a.client())
+	} else if c != (config.AppConn{}) {
+		p.MediaServer = incomplete{}
 	}
 
 	if c, ok, err = a.Config.App(ctx, config.AppRadarr); err != nil {
@@ -44,6 +76,8 @@ func (a *Apps) Providers(ctx context.Context) (scanner.Providers, error) {
 	}
 	if ok {
 		p.Movies = radarr.New(c.URL, c.APIKey, a.client())
+	} else if c != (config.AppConn{}) {
+		p.Movies = incomplete{}
 	}
 
 	if c, ok, err = a.Config.App(ctx, config.AppSonarr); err != nil {
@@ -51,6 +85,8 @@ func (a *Apps) Providers(ctx context.Context) (scanner.Providers, error) {
 	}
 	if ok {
 		p.Series = sonarr.New(c.URL, c.APIKey, a.client())
+	} else if c != (config.AppConn{}) {
+		p.Series = incomplete{}
 	}
 
 	if c, ok, err = a.Config.App(ctx, config.AppQBittorrent); err != nil {
@@ -62,6 +98,8 @@ func (a *Apps) Providers(ctx context.Context) (scanner.Providers, error) {
 			return scanner.Providers{}, err
 		}
 		p.Downloads = client
+	} else if c != (config.AppConn{}) {
+		p.Downloads = incomplete{}
 	}
 	return p, nil
 }
