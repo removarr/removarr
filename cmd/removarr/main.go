@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -59,23 +60,50 @@ func run(log *slog.Logger) error {
 	server := &api.Server{Config: cfg, Store: st, Scanner: scans, Apps: apps, Log: log}
 
 	httpServer := &http.Server{
-		Addr:              fmt.Sprintf(":%d", env.Port),
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", env.Port))
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+	log.Info("removarr listening", "port", env.Port, "configDir", configDir, "dryRun", env.DryRun)
+	return serve(ctx, httpServer, ln, 10*time.Second)
+}
+
+// serve serves srv on ln until ctx is done, then shuts the server down, giving in-flight
+// requests up to grace to finish. It returns only after both Shutdown and Serve have
+// returned, so the caller can close the database right after it returns without cutting
+// off a request that is still using it. It returns nil after a clean drain, an error
+// wrapping the Shutdown error if the grace period ran out, or the serving error if serving
+// stopped on its own. It never returns http.ErrServerClosed.
+func serve(ctx context.Context, srv *http.Server, ln net.Listener, grace time.Duration) error {
+	stopped := make(chan struct{})
+	defer close(stopped)
+	shutdownDone := make(chan error, 1)
 	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		select {
+		case <-ctx.Done():
+		case <-stopped:
+			shutdownDone <- nil
+			return
+		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), grace)
 		defer cancel()
-		httpServer.Shutdown(shutdownCtx)
+		shutdownDone <- srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Info("removarr listening", "port", env.Port, "configDir", configDir, "dryRun", env.DryRun)
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	err := srv.Serve(ln)
+	if errors.Is(err, http.ErrServerClosed) {
+		// Serve returns as soon as Shutdown starts; wait for the drain itself.
+		if err := <-shutdownDone; err != nil {
+			return fmt.Errorf("shut down: %w", err)
+		}
+		return nil
 	}
-	return nil
+	return err
 }
