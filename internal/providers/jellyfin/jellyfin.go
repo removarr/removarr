@@ -203,7 +203,12 @@ func (c *Client) Library(ctx context.Context, userIDs []string) (domain.Library,
 		}
 		for _, it := range items {
 			if it.SeriesID == "" || it.ParentIndexNumber == nil || it.IndexNumber == nil {
-				continue // cannot be matched to a managed episode
+				// Cannot be matched to a managed episode, but a favourite on it still
+				// protects its series.
+				if s := series[it.SeriesID]; s != nil && it.UserData.IsFavorite {
+					s.FavoriteOf[user] = true
+				}
+				continue
 			}
 			e := episodes[it.ID]
 			if e == nil {

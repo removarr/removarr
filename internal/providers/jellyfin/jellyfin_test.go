@@ -204,6 +204,40 @@ func TestLibraryWithoutUsersAsksNothing(t *testing.T) {
 	}
 }
 
+func TestAFavouriteUnnumberedEpisodeProtectsItsSeries(t *testing.T) {
+	series := `{"Id":"s1","Name":"The Show","UserData":{"IsFavorite":false}}`
+	f := &fakeJellyfin{items: map[string][]string{
+		"a/Series":  {series},
+		"b/Series":  {series},
+		"a/Episode": {`{"Id":"sp1","SeriesId":"s1","ParentIndexNumber":0,"UserData":{"IsFavorite":true}}`},
+		"b/Episode": {`{"Id":"sp1","SeriesId":"s1","ParentIndexNumber":0,"UserData":{"IsFavorite":false}}`},
+	}}
+	lib, err := start(t, f, "k").Library(ctx, []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lib.Episodes) != 0 {
+		t.Errorf("got %d episodes, want none: an episode without a number cannot be matched", len(lib.Episodes))
+	}
+	if len(lib.Series) != 1 {
+		t.Fatalf("got %d series, want 1", len(lib.Series))
+	}
+	if !reflect.DeepEqual(lib.Series[0].FavoriteOf, map[string]bool{"a": true}) {
+		t.Errorf("FavoriteOf = %v, want Alice only: she marked an episode of the series a favourite", lib.Series[0].FavoriteOf)
+	}
+}
+
+func TestAFavouriteEpisodeOfAnUnknownSeriesIsSkipped(t *testing.T) {
+	f := &fakeJellyfin{items: map[string][]string{"a/Episode": {
+		`{"Id":"e1","UserData":{"IsFavorite":true}}`,
+		`{"Id":"e2","SeriesId":"gone","UserData":{"IsFavorite":true}}`,
+	}}}
+	lib, err := start(t, f, "k").Library(ctx, []string{"a"})
+	if err != nil || len(lib.Series)+len(lib.Episodes) != 0 {
+		t.Errorf("Library = %+v, %v; want nothing", lib, err)
+	}
+}
+
 func TestLibraryReadsEveryPageWhenTheServerCapsThePageSize(t *testing.T) {
 	var movies []string
 	for i := 1; i <= 5; i++ {
