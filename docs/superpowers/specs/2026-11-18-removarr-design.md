@@ -48,7 +48,7 @@ These are deliberately left out. Section 14 lists them as later work.
 Consequences of API-only:
 
 - Sizes are what the apps report. removarr does not measure the disk.
-- removarr cannot see hardlinks. It infers which torrent backs which library file from Sonarr/Radarr history.
+- removarr cannot see hardlinks. It infers which torrent backs which library file from Sonarr/Radarr history and, where history says nothing, from file sizes (6.6).
 
 ## 4. Terms
 
@@ -62,9 +62,9 @@ Consequences of API-only:
 | Counting users | The Jellyfin users whose watch state decides whether something is watched. |
 | Protected | Excluded from suggestions by a rule (favourite or tag). |
 | Ignored | Hidden from a list by the user's choice. |
-| Linked torrent | A torrent that at least one current library file was imported from. |
-| Orphan torrent | A torrent whose hash no media manager knows. |
-| Unlinked torrent | A torrent a media manager grabbed, but that no current library file came from. |
+| Linked torrent | A torrent that backs at least one current library file, by history or by content (6.6). |
+| Orphan torrent | A torrent whose hash no media manager knows and that backs no library file. |
+| Unlinked torrent | A torrent a media manager grabbed, but that backs no current library file. |
 | Plan | The exact set of operations a deletion will perform, built from live data and shown for confirmation. |
 
 ## 5. Features
@@ -175,12 +175,26 @@ A protected series produces no series row and no season rows.
 
 A torrent is **associated** with a movie or episode when that media manager's history records it as grabbed for it. A torrent **backs** a library file when that file was imported from it.
 
+**Linking by content.** History says nothing about a file that was imported by hand, nor about a torrent that was added to the download client directly (16.1). For those, removarr compares file sizes:
+
+- It asks the download client for the files of every torrent that history does not show as backing a library file and that is not in a media manager's queue. Torrents in an excluded category or with an excluded tag are not asked about.
+- A torrent also **backs** a library file when one of the torrent's files has exactly the same size in bytes as the library file, that size is at least 50 MB, and history names no download as the source of that library file.
+- A torrent that backs a library file by content is also **associated** with the movie, or with every episode, that the file belongs to.
+
+History takes precedence: content never replaces a source that history names. When files of several torrents match the same library file, the torrent whose ID sorts first backs it and the others do not.
+
+Limits, accepted for v1:
+
+- Of two torrents that hold the same file, such as cross-seeds, only one is linked. The other stays listed.
+- A torrent that history already shows as backing some library file is not asked for its files, so a file imported by hand from the same torrent is not linked to it.
+- Two unrelated files of exactly the same size would be linked. The confirmation of a deletion still shows every torrent it would remove (6.8).
+
 **Classification** of each torrent in the download client:
 
 - **In queue:** the hash is in a media manager's queue. Never listed.
-- **Linked:** at least one current library file was imported from it. Not listed as an orphan; shown under its movie or series.
-- **Unlinked:** a media manager's history knows the hash, but no current library file came from it. Typical cause: the release was replaced by an upgrade. Listed.
-- **Orphan:** no media manager knows the hash. Typical cause: the movie or series was deleted from the media manager and the torrent was left behind. Listed.
+- **Linked:** it backs at least one current library file, by history or by content. Not listed as an orphan; shown under its movie or series.
+- **Unlinked:** a media manager's history knows the hash, but it backs no current library file. Typical cause: the release was replaced by an upgrade. Listed.
+- **Orphan:** no media manager knows the hash and it backs no library file. Typical cause: the movie or series was deleted from the media manager and the torrent was left behind. Listed.
 
 Torrents in an excluded category or with an excluded tag are left out of orphan detection.
 
@@ -212,6 +226,7 @@ For an orphan or unlinked torrent row, the torrent itself is removed, with data.
 Notes:
 
 - A torrent that still backs other library files stays. Examples: a multi-season pack stays until all of its seasons are deleted, and a collection pack stays until all of its movies are deleted. The plan says so.
+- A torrent that is associated with a movie or episode by content (6.6) is treated the same as one associated by history.
 - **Exclusion list:** when the setting is on, removing a movie from Radarr or a series from Sonarr also adds it to that app's import exclusion list, so an import list does not add it back.
 - **Shared data:** if a torrent being removed has the same content path as a torrent that is not being removed, removarr removes the torrent entry and keeps the data.
 - Deleting an orphan or unlinked torrent never changes anything in Sonarr or Radarr.
@@ -227,7 +242,7 @@ Notes:
    - Watched series: Jellyfin, Sonarr, qBittorrent.
    - Orphan torrents: qBittorrent and every configured media manager, of which there must be at least one.
 
-   Otherwise the list shows an error instead of results. In particular, torrents are never called orphans while a configured media manager is unreachable.
+   Otherwise the list shows an error instead of results. In particular, torrents are never called orphans while a configured media manager is unreachable. The download client has answered completely only when the file lists needed for linking by content (6.6) were read too.
 6. **Dry run.** With `REMOVARR_DRY_RUN=true`, plans execute as no-ops: no deleting call is sent, and the history records the action as a dry run.
 
 ### 6.9 Sizes
@@ -285,6 +300,7 @@ Illustrative shape, not final signatures.
   - remove a movie or series, delete episode files, unmonitor episodes and seasons.
 - **DownloadClient**
   - list downloads: ID, name, size, state, category, tags, content path, date added, and optionally ratio, seeding time and tracker;
+  - list the files of one download: name and size;
   - remove a download, with or without its data.
 
 The seeding fields are optional so that a usenet client, which does not seed, can implement the same interface later.
@@ -295,9 +311,10 @@ Adding Plex, Emby or another download client means adding one implementation of 
 
 1. The user starts a scan. The server refuses if one is already running.
 2. The server takes a snapshot from every configured app.
-3. For each list whose dependencies all answered (6.8, rule 5), `scan` computes the candidates.
-4. The store replaces the previous scan's candidates with the new ones and saves the summary.
-5. The UI polls the scan status and reloads the lists when it finishes.
+3. For the torrents that history does not link, the server reads their file lists and `scan` links them by content (6.6).
+4. For each list whose dependencies all answered (6.8, rule 5), `scan` computes the candidates.
+5. The store replaces the previous scan's candidates with the new ones and saves the summary.
+6. The UI polls the scan status and reloads the lists when it finishes.
 
 ### 7.4 Delete flow
 
@@ -393,7 +410,7 @@ One SQLite file in the config directory.
 
 ## 12. Testing
 
-- **`scan`:** table-driven tests over hand-built snapshots, one per rule in sections 6.1 to 6.6, including specials, still-airing series, season merging, ignored seasons, both watched modes, grace period, protection, and each torrent classification.
+- **`scan`:** table-driven tests over hand-built snapshots, one per rule in sections 6.1 to 6.6, including specials, still-airing series, season merging, ignored seasons, both watched modes, grace period, protection, each torrent classification, and linking by content.
 - **Providers:** each implementation tested against a local HTTP server replaying recorded responses from the real app.
 - **`planner` and `executor`:** tested with fake providers: re-evaluation and skips, step order, failure containment, the shared-data rule, plan expiry, dry run.
 - **`store`:** tested against a temporary SQLite file.
@@ -473,7 +490,7 @@ Observed:
 - **Manual import.** The import event has a file ID and no download ID. On the reference stack this is about two thirds of the episode files that have an import record.
 - **A torrent added to the download client outside Sonarr and Radarr.** It has no history at all.
 
-The stage-1 code follows the history-only rule of 6.6, so in both cases a torrent that still holds library files is classed as unlinked or orphan. Measured on the reference stack by comparing each listed torrent's files with the library files by exact size:
+With history as the only source of links, a torrent that still holds library files is classed as unlinked or orphan in both cases. Measured on the reference stack, before linking by content existed, by comparing each listed torrent's files with the library files by exact size:
 
 | List | Torrents listed | Hold files that are in the library | Hold none | No large file |
 |---|---|---|---|---|
@@ -482,7 +499,7 @@ The stage-1 code follows the history-only rule of 6.6, so in both cases a torren
 
 So 27 of the 68 listed torrents, 876 of 1,050 GB, still hold library files. With hard links, removing such a torrent with its data frees no space and stops its seeding, while the list presents it as left behind.
 
-**This is not handled in stage 1.** Section 6.6 needs a decision before stage 2 plans any deletion. One API-only option: also treat a torrent as backing a library file when one of its files, as listed by the download client, has exactly the size of a library file reported by the media manager.
+**Decision, 2026-11-19.** The owner chose to also link torrents to library files by content. Section 6.6 defines the rule under "Linking by content".
 
 ### 16.2 Sonarr exposes monitoring per episode and per season: holds
 
