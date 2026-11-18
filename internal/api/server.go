@@ -51,10 +51,14 @@ type Server struct {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
+	mux.HandleFunc("GET /api/status", s.status)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
 	mux.HandleFunc("POST /api/connections/{app}/test", s.testConnection)
 	mux.HandleFunc("GET /api/media-server/users", s.users)
+	mux.HandleFunc("POST /api/scans", s.startScan)
+	mux.HandleFunc("GET /api/scans/current", s.currentScan)
+	mux.HandleFunc("GET /api/candidates", s.candidates)
 	return guard(mux)
 }
 
