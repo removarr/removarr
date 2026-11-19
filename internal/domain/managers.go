@@ -39,6 +39,8 @@ type Series struct {
 }
 
 // Links is what a media manager knows about downloads. Download IDs are lower case.
+// Grabbed and FileSource also carry the links made by content once scan.ContentLinks has
+// extended them (spec 6.6).
 type Links struct {
 	// Grabbed maps a download ID to the IDs of the movies or episodes it was grabbed for.
 	Grabbed map[string][]int

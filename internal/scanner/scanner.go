@@ -174,7 +174,8 @@ type Fetched struct {
 	Series    Source[domain.SeriesSnapshot]
 	Downloads Source[[]domain.Download]
 	// Files holds the files of the downloads that needed the content check (spec 6.6),
-	// by download ID. It is nil when no file list was read.
+	// by download ID. nil means the content check did not run; an empty map means it ran
+	// and no download needed its files.
 	Files map[string][]domain.DownloadFile
 }
 
@@ -203,9 +204,15 @@ func (s *Service) fetch(ctx context.Context, p Providers, rules domain.Rules) Fe
 	}
 	// Without a media manager's answer there is no library file to match against, and no
 	// list that could use the result.
+	// When only one of two configured media managers answered, the other manager's downloads
+	// look unlinked, so their file lists are read too; the torrent list is not produced in
+	// that case.
 	if f.Downloads.ok() && (f.Movies.ok() || f.Series.ok()) {
 		s.setPhase("matching downloads to library files")
 		f.Files, f.Downloads.Err = readFiles(ctx, p.Downloads, rules, f)
+		if f.Downloads.Err == nil {
+			s.Log.Info("read file lists for linking by content", "downloads", len(f.Files))
+		}
 	}
 	if p.MediaServer != nil {
 		f.Library.Configured = true

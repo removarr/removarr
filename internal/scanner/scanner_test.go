@@ -481,6 +481,28 @@ func TestRunFailsEveryListWhenFilesCannotBeRead(t *testing.T) {
 	}
 }
 
+func TestRunLogsHowManyFileListsItRead(t *testing.T) {
+	const message = "read file lists for linking by content"
+	scan := func(filesErr error) string {
+		p, downloads := manualWorld()
+		downloads.filesErr = filesErr
+		var out strings.Builder
+		svc := service(p, withUser(), &fakeStore{})
+		svc.Log = slog.New(slog.NewTextHandler(&out, nil))
+		if err := svc.Run(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+
+	if got := scan(nil); !strings.Contains(got, "level=INFO msg=\""+message+"\" downloads=2") {
+		t.Errorf("log = %q, want an Info line saying 2 file lists were read", got)
+	}
+	if got := scan(errors.New("boom")); strings.Contains(got, message) {
+		t.Errorf("log = %q, want no file list line when reading failed", got)
+	}
+}
+
 func TestRunNamesAnUnnamedDownloadByIDWhenItsFilesCannotBeRead(t *testing.T) {
 	p, downloads := manualWorld()
 	downloads.list[0].Name = ""
