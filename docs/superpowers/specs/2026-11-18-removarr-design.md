@@ -177,7 +177,9 @@ A torrent is **associated** with a movie or episode when that media manager's hi
 
 **Linking by content.** History says nothing about a file that was imported by hand, nor about a torrent that was added to the download client directly (16.1). For those, removarr compares file sizes:
 
-- It asks the download client for the files of every torrent that history does not show as backing a library file and that is not in a media manager's queue. Torrents in an excluded category or with an excluded tag are not asked about.
+- It asks the download client for the files of every torrent that history does not show as backing a library file.
+- It also asks a torrent that history does show as backing library files when the torrent is at least 50 MB larger than those files together. Such a torrent may hold a file that was imported by hand as well.
+- Torrents in a media manager's queue, in an excluded category or with an excluded tag are never asked about.
 - A torrent also **backs** a library file when one of the torrent's files has exactly the same size in bytes as the library file, that size is at least 50 MB, and history names no download as the source of that library file.
 - A torrent that backs a library file by content is also **associated** with the movie, or with every episode, that the file belongs to.
 
@@ -186,7 +188,8 @@ History takes precedence: content never replaces a source that history names. Wh
 Limits, accepted for v1:
 
 - Of two torrents that hold the same file, such as cross-seeds, only one is linked. The other stays listed.
-- A torrent that history already shows as backing some library file is not asked for its files, so a file imported by hand from the same torrent is not linked to it.
+- A torrent that history shows as backing library files is asked for its files only when the size test above says it holds more. If history names it as the source of a file it does not hold, the test can fail, and a file imported by hand from the same torrent is then not linked to it. Deleting everything that history links to the torrent would remove it although it still holds that file.
+- A file that the torrent lists but has not downloaded is compared like any other.
 - Two unrelated files of exactly the same size would be linked. The confirmation of a deletion still shows every torrent it would remove (6.8).
 
 **Classification** of each torrent in the download client:
@@ -311,7 +314,7 @@ Adding Plex, Emby or another download client means adding one implementation of 
 
 1. The user starts a scan. The server refuses if one is already running.
 2. The server takes a snapshot from every configured app.
-3. For the torrents that history does not link, the server reads their file lists and `scan` links them by content (6.6).
+3. The server reads the file lists of the torrents that 6.6 asks about, and `scan` links them by content.
 4. For each list whose dependencies all answered (6.8, rule 5), `scan` computes the candidates.
 5. The store replaces the previous scan's candidates with the new ones and saves the summary.
 6. The UI polls the scan status and reloads the lists when it finishes.
@@ -501,6 +504,20 @@ So 27 of the 68 listed torrents, 876 of 1,050 GB, still hold library files. With
 
 **Decision, 2026-11-19.** The owner chose to also link torrents to library files by content. Section 6.6 defines the rule under "Linking by content".
 
+**Measured after the change.** One scan of the reference stack asked for the file lists of the 68 torrents that history does not link:
+
+- 27 of them (876 GB) hold library files and are now linked, through 1,414 episode files and 9 movie files. None of the 27 is listed any more, and no torrent is newly listed.
+- 41 torrents (174 GB) stay listed: 28 unlinked and 13 orphan. The list matched an independent recomputation from the apps' raw answers, torrent by torrent.
+- The movie and series lists kept the same rows. One series row gained a torrent that a deletion would remove.
+- The scan still took 18 seconds.
+
+The same raw answers showed what linking by content does not reach:
+
+- 1,434 library files of at least 50 MB match no file of any torrent in the download client.
+- One torrent (15 GB) that history links to some library files also holds 6 files that were imported by hand. This is why 6.6 also asks torrents that are larger than the files history links to them. On the reference stack that is 22 more torrents, 90 file lists in one scan, and it links those 6 files without moving any other link.
+- 2 of the 27 torrents also hold files of at least 50 MB that match no library file, 6 GB together. Under 6.7 those files go with the torrent when its library files are deleted. Whether the confirmation should point this out is to be decided before stage 2.
+- No file that carries a content link was incompletely downloaded.
+
 ### 16.2 Sonarr exposes monitoring per episode and per season: holds
 
 Assumption: Sonarr's API can unmonitor individual episodes and a season. If unmonitoring a season does not also unmonitor its episodes, removarr does both explicitly.
@@ -532,6 +549,6 @@ The lists of one scan were recomputed independently from the apps' raw answers a
 |---|---|---|
 | Watched movies | 45 | 3 movies with a file had no match on the media server |
 | Watched series | 18 | 10 of them still airing; no unmatched episodes |
-| Orphan torrents | 68 | 27 orphan and 41 unlinked; see 16.1 for what those two words can be trusted to mean |
+| Orphan torrents | 41 | 13 orphan and 28 unlinked, after linking by content; 68 before it (16.1) |
 
-All 27 orphans are torrents outside the two categories the media managers use. Unless their categories are excluded in the settings, torrents that have nothing to do with the media library are listed.
+All 13 orphans are torrents outside the two categories the media managers use. Unless their categories are excluded in the settings, torrents that have nothing to do with the media library are listed.
