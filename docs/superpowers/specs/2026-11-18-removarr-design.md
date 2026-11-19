@@ -2,6 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -37,6 +38,13 @@ These are deliberately left out. Section 14 lists them as later work.
 - More than one instance of each app (for example a second, 4K Radarr).
 - Plex, Emby, usenet clients, or torrent clients other than qBittorrent.
 
+### Principles
+
+The owner stated two principles on 2026-11-19. They decide the cases that the rules in section 6 would otherwise leave open.
+
+- **Free disk space, but never remove a movie or episode that has not been watched.** Where removarr cannot be sure that it was watched, it counts as unwatched. Specials are the one approved exception (6.3).
+- **A torrent goes as a whole or stays as a whole.** Deleting only part of what a torrent holds makes no sense: the torrent keeps the data, so no space is freed. removarr never does it.
+
 ## 3. Environment and constraints
 
 - **Reference deployment:** Raspberry Pi 5 (8 GB), DietPi, with Sonarr, Radarr, Prowlarr, qBittorrent and Jellyfin.
@@ -62,6 +70,8 @@ Consequences of API-only:
 | Counting users | The Jellyfin users whose watch state decides whether something is watched. |
 | Protected | Excluded from suggestions by a rule (favourite or tag). |
 | Ignored | Hidden from a list by the user's choice. |
+| Waiting | Qualifies, but shares a torrent with something that stays, so it is not listed yet (6.3). |
+| Tied | Rows that share a torrent and are deleted together (6.3). |
 | Linked torrent | A torrent that backs at least one current library file, by history or by content (6.6). |
 | Orphan torrent | A torrent whose hash no media manager knows and that backs no library file. |
 | Unlinked torrent | A torrent a media manager grabbed, but that backs no current library file. |
@@ -77,7 +87,7 @@ Consequences of API-only:
 
 ### 5.2 Information per row
 
-- **Movies and series:** title, year, size, which counting users watched it, the watched date, the number of torrents Delete would remove, and a seeding flag when any of those torrents is below the seeding minimum. A row can be expanded to show its torrents (name, tracker, ratio, seeding time).
+- **Movies and series:** title, year, size, which counting users watched it, the watched date, the number of torrents Delete would remove, and a seeding flag when any of those torrents is below the seeding minimum. A row can be expanded to show its torrents (name, tracker, ratio, seeding time, and how much of the torrent's data is not in the library, see 6.7). A row that is tied to other rows (6.3) names them.
 - **Series rows** also show the scope (whole series, or season number) and a "still airing" label where it applies.
 - **Torrents:** name, size, state, category, tracker, ratio, seeding time, date added, the reason (orphan or unlinked), and the seeding flag.
 
@@ -92,7 +102,7 @@ Consequences of API-only:
 
 - A scan runs only when the user starts it. One scan runs at a time.
 - Scan results are stored, so the lists load immediately on later visits.
-- The header shows when the last scan ran, a summary (candidates per list, protected count, unmatched count, errors), and the free space of the library root folders as reported by Sonarr and Radarr.
+- The header shows when the last scan ran, a summary (candidates per list, protected count, unmatched count, waiting count, errors), and the free space of the library root folders as reported by Sonarr and Radarr.
 
 ### 5.5 History
 
@@ -128,7 +138,8 @@ A page listing every executed deletion: time, item, size, each step and its resu
 
 - **Movies:** by TMDB ID, falling back to IMDb ID.
 - **Series:** by TVDB ID, falling back to IMDb ID, then TMDB ID.
-- **Episodes:** within a matched series, by season number and episode number. A Jellyfin item that covers a range of episodes counts for each episode in the range.
+- **Episodes:** within a matched series, by season number and episode number.
+- **Episode ranges:** a Jellyfin item that covers a range of episodes counts for the first episode of the range. It counts for a further episode of the range only when Sonarr holds that episode in the same file as the first. So a range that Jellyfin read wrongly from a file name cannot mark episodes in other files as watched.
 - If several Jellyfin items match one movie or episode, it is watched for a user when any of them is played by that user.
 - A movie with no Jellyfin match is never suggested. An episode with no Jellyfin match counts as unwatched. Both are counted as "unmatched" in the scan summary.
 
@@ -149,6 +160,16 @@ Only episodes and movies that have a file are considered. "Regular seasons" mean
 **Still airing.** A series row is labelled "still airing" when Sonarr's status for the series is anything other than ended. This changes what Delete does (6.7).
 
 **Finished airing.** A season has finished airing when the series has ended, or when a later regular season exists and every episode in the season has an air date in the past. The newest season of a series that has not ended is never treated as finished.
+
+**Whole torrents.** removarr never deletes only part of the library files that one torrent backs (section 2). So after the rules above have decided which movies, series and seasons qualify, each of them is checked against the torrents that back its files (6.6):
+
+- Rows whose files are backed by the same torrent belong together, and so do rows connected through a chain of such torrents. Such a set of rows is a **group**. Most groups are a single row.
+- A torrent **blocks** its group when it is in a media manager's queue, or when it backs a library file that no row of the group would delete. Examples: a multi-season pack with a season that is not watched yet, a collection pack with a movie that is protected, and a pack that holds specials of a series that is still airing.
+- A group with a blocking torrent **waits**. None of its rows is a candidate or listed, and the scan summary counts them as waiting.
+- In a group of several rows that does not wait, the rows are **tied**: they are deleted together or not at all (6.7). Each is listed and names the rows it is tied to.
+- An ignored row (6.5) stays, so the group it belongs to waits.
+
+The check uses the library files of both media managers. A torrent shared between a movie and a series is therefore never judged from one side only: when a configured media manager did not answer, the groups cannot be formed and neither watched list is produced (6.8, rule 5).
 
 ### 6.4 Protection
 
@@ -228,7 +249,9 @@ For an orphan or unlinked torrent row, the torrent itself is removed, with data.
 
 Notes:
 
-- A torrent that still backs other library files stays. Examples: a multi-season pack stays until all of its seasons are deleted, and a collection pack stays until all of its movies are deleted. The plan says so.
+- **Whole torrents.** A torrent is removed with everything it holds. removarr never removes part of a torrent's data, and because of the whole-torrent rule (6.3) every torrent that backs a deleted file is removed in the same deletion. A multi-season pack or a collection pack is therefore not touched until everything it backs can go.
+- **Tied rows** (6.3) are deleted together. When Delete is asked for one of them, the plan contains all of them and says which rows were added and why. If one of their media manager steps fails, none of the torrents they share is removed.
+- **Data outside the library.** A torrent can hold files that are not in the library, because they were never imported or were replaced since. They go with the torrent. A torrent's data outside the library is its size minus the sizes of the library files it backs. The row and the confirmation state this amount for every torrent where it is 50 MB or more. It is information only and never blocks a deletion.
 - A torrent that is associated with a movie or episode by content (6.6) is treated the same as one associated by history.
 - **Exclusion list:** when the setting is on, removing a movie from Radarr or a series from Sonarr also adds it to that app's import exclusion list, so an import list does not add it back.
 - **Shared data:** if a torrent being removed has the same content path as a torrent that is not being removed, removarr removes the torrent entry and keeps the data.
@@ -238,11 +261,11 @@ Notes:
 
 1. **Nothing is deleted without a confirmed plan.** Selecting Delete asks the server for a plan. The server builds it from live data, not from the stored scan: each selected item is re-read from the apps and re-evaluated with the same rules as the scan. Items that no longer qualify are listed in the plan as skipped, with the reason. The confirmation dialog shows the plan. Only a confirmed plan is executed.
 2. **Plans expire** ten minutes after they are built. An expired plan cannot be executed; the user rebuilds it.
-3. **Order per item:** media manager first, then torrents. If the media manager step fails, the torrent steps for that item are skipped.
+3. **Order per item:** media manager first, then torrents. If the media manager step fails, the torrent steps for that item are skipped. Tied rows (6.3) count as one item: all of their media manager steps come first.
 4. **Failures are contained.** A failed item is recorded with its error and the remaining items continue. Anything left behind, such as a torrent whose media was already removed, appears as an orphan in the next scan.
 5. **No guessing when an app is down.** A list is produced only when every app it depends on answered completely:
-   - Watched movies: Jellyfin, Radarr, qBittorrent.
-   - Watched series: Jellyfin, Sonarr, qBittorrent.
+   - Watched movies: Jellyfin, Radarr, qBittorrent, and Sonarr when it is configured.
+   - Watched series: Jellyfin, Sonarr, qBittorrent, and Radarr when it is configured.
    - Orphan torrents: qBittorrent and every configured media manager, of which there must be at least one.
 
    Otherwise the list shows an error instead of results. In particular, torrents are never called orphans while a configured media manager is unreachable. The download client has answered completely only when the file lists needed for linking by content (6.6) were read too.
@@ -252,7 +275,7 @@ Notes:
 
 - A movie or series row's size is the sum of the library file sizes, as reported by the media manager, for the files Delete would remove.
 - A torrent row's size is its size as reported by the download client.
-- Sizes are labelled as sizes, not as space that will be freed. Where a plan keeps a torrent that backs the deleted files, the plan notes that the space is not freed until that torrent is removed.
+- Sizes are labelled as sizes, not as space that will be freed, because removarr cannot see hard links (section 3). A plan never keeps a torrent that backs the files it deletes (6.3).
 
 ## 7. Architecture
 
@@ -413,7 +436,7 @@ One SQLite file in the config directory.
 
 ## 12. Testing
 
-- **`scan`:** table-driven tests over hand-built snapshots, one per rule in sections 6.1 to 6.6, including specials, still-airing series, season merging, ignored seasons, both watched modes, grace period, protection, each torrent classification, and linking by content.
+- **`scan`:** table-driven tests over hand-built snapshots, one per rule in sections 6.1 to 6.6, including specials, still-airing series, season merging, ignored seasons, both watched modes, grace period, protection, each torrent classification, linking by content, episode ranges, and whole torrents with waiting and tied rows.
 - **Providers:** each implementation tested against a local HTTP server replaying recorded responses from the real app.
 - **`planner` and `executor`:** tested with fake providers: re-evaluation and skips, step order, failure containment, the shared-data rule, plan expiry, dry run.
 - **`store`:** tested against a temporary SQLite file.
@@ -426,7 +449,7 @@ One SQLite file in the config directory.
 v1 is one product, built in four stages. Each stage ends with something that can be checked on the reference stack before the next begins.
 
 1. **Read-only core.** Providers, the scan engine, the store and the scan and candidate endpoints. Check: a scan against the real apps produces three correct lists. The assumptions in section 16 are verified here.
-2. **Ignore and delete.** Ignores, the planner, the executor and the history. Check: plans are correct with dry run on, then real deletions work.
+2. **Ignore and delete.** It starts with the rules that were decided after stage 1 was checked and that change the lists: episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7). Until they are built, the lists follow the rules as they stood; 16.6 shows that no row of the reference stack differs. Then ignores, the planner, the executor and the history. Check: plans are correct with dry run on, then real deletions work.
 3. **Web UI.** All pages, on top of the finished API.
 4. **Packaging.** The multi-architecture image, the compose example and the README.
 
@@ -515,7 +538,7 @@ The same raw answers showed what linking by content does not reach:
 
 - 1,434 library files of at least 50 MB match no file of any torrent in the download client.
 - One torrent (15 GB) that history links to some library files also holds 6 files that were imported by hand. This is why 6.6 also asks torrents that are larger than the files history links to them. On the reference stack that is 22 more torrents, 90 file lists in one scan, and it links those 6 files without moving any other link. A scan with that rule read 90 file lists, produced the same three lists row for row, matched the independent recomputation again, and took 19 seconds.
-- 2 of the 27 torrents also hold files of at least 50 MB that match no library file, 6 GB together. Under 6.7 those files go with the torrent when its library files are deleted. Whether the confirmation should point this out is to be decided before stage 2.
+- 2 of the 27 torrents also hold files of at least 50 MB that match no library file, 6 GB together. Under 6.7 those files go with the torrent when its library files are deleted, and the confirmation says how much of the torrent's data is not in the library.
 - No file that carries a content link was incompletely downloaded.
 
 ### 16.2 Sonarr exposes monitoring per episode and per season: holds
@@ -552,3 +575,12 @@ The lists of one scan were recomputed independently from the apps' raw answers a
 | Orphan torrents | 41 | 13 orphan and 28 unlinked, after linking by content; 68 before it (16.1) |
 
 All 13 orphans are torrents outside the two categories the media managers use. Unless their categories are excluded in the settings, torrents that have nothing to do with the media library are listed.
+
+### 16.6 The rules decided after the check
+
+On 2026-11-19 the owner stated the two principles of section 2 and asked for the open cases to be decided from them. The rules that follow from them are episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7). They are not built yet (section 13). Measured on the reference stack, from the lists of one scan and the apps' raw answers:
+
+- **Whole torrents.** None of the 63 movie and series rows would delete only part of what a torrent backs. For 32 rows every backing torrent goes with the row, and for 31 rows no torrent in the download client holds the files. The rule changes no row today.
+- The shapes the rule exists for do occur among the 315 torrents that back library files: 12 back files in two or more seasons of one series, 2 back specials together with regular episodes, and 1 backs two or more movies.
+- **Data outside the library.** 23 of those 315 torrents hold 50 MB or more that is not in the library, 66 GB together. The 63 rows would remove 64 torrents. 2 of them hold such data, 14 GB together, and both are old downloads that back no library file any more.
+- **Episode ranges.** 20 of the 4,232 episode items on the media server cover a range, each of two episodes. For 18 of them Sonarr holds both episodes in one file. For one, the second episode is in another file or has none, and one belongs to a series without a match. Neither of those two is played, so the rule changes no row today.
