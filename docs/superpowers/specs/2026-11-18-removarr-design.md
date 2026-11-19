@@ -514,7 +514,7 @@ So 27 of the 68 listed torrents, 876 of 1,050 GB, still hold library files. With
 The same raw answers showed what linking by content does not reach:
 
 - 1,434 library files of at least 50 MB match no file of any torrent in the download client.
-- One torrent (15 GB) that history links to some library files also holds 6 files that were imported by hand. This is why 6.6 also asks torrents that are larger than the files history links to them. On the reference stack that is 22 more torrents, 90 file lists in one scan, and it links those 6 files without moving any other link.
+- One torrent (15 GB) that history links to some library files also holds 6 files that were imported by hand. This is why 6.6 also asks torrents that are larger than the files history links to them. On the reference stack that is 22 more torrents, 90 file lists in one scan, and it links those 6 files without moving any other link. A scan with that rule read 90 file lists, produced the same three lists row for row, matched the independent recomputation again, and took 19 seconds.
 - 2 of the 27 torrents also hold files of at least 50 MB that match no library file, 6 GB together. Under 6.7 those files go with the torrent when its library files are deleted. Whether the confirmation should point this out is to be decided before stage 2.
 - No file that carries a content link was incompletely downloaded.
 
