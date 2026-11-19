@@ -1,0 +1,97 @@
+package scan
+
+import (
+	"sort"
+
+	"github.com/removarr/removarr/internal/domain"
+)
+
+// MinContentSize is the smallest file that linking by content compares: 50 MB (spec 6.6).
+// Smaller files, such as subtitles and samples, share a size by chance too easily.
+const MinContentSize int64 = 50 << 20
+
+// LibraryFile is one current library file and the items it belongs to: one movie, or
+// every episode of the file.
+type LibraryFile struct {
+	ID    int
+	Size  int64
+	Items []int
+}
+
+// NeedsContentCheck reports whether a download's files are needed for linking by content
+// (spec 6.6): the rules do not exclude the download, it is not in a queue, and history
+// does not show it backing a library file. x must be built from history alone.
+func NeedsContentCheck(r domain.Rules, x *LinkIndex, d domain.Download) bool {
+	return d.ID != "" && !excluded(r, d) && !x.Queued(d.ID) && x.Backing(d.ID) == 0
+}
+
+// ContentLinks returns links extended by content (spec 6.6). A download backs a library
+// file when one of the download's files has exactly the library file's size, that size is
+// at least MinContentSize, and links names no source for the library file. The download
+// is then also associated with the file's items. History takes precedence: a source that
+// links names is never replaced. When files of several downloads match one library file,
+// the download whose ID sorts first backs it. links itself is not modified.
+func ContentLinks(links domain.Links, library []LibraryFile, files map[string][]domain.DownloadFile) domain.Links {
+	out := domain.Links{
+		Grabbed:    make(map[string][]int, len(links.Grabbed)),
+		FileSource: make(map[int]string, len(links.FileSource)),
+		Queue:      make(map[string]bool, len(links.Queue)),
+	}
+	for id, items := range links.Grabbed {
+		out.Grabbed[id] = append([]int(nil), items...)
+	}
+	for file, id := range links.FileSource {
+		out.FileSource[file] = id
+	}
+	for id, queued := range links.Queue {
+		out.Queue[id] = queued
+	}
+
+	// The library files history names no source for, by size.
+	unsourced := map[int64][]LibraryFile{}
+	for _, f := range library {
+		if f.Size >= MinContentSize && links.FileSource[f.ID] == "" {
+			unsourced[f.Size] = append(unsourced[f.Size], f)
+		}
+	}
+	if len(unsourced) == 0 {
+		return out
+	}
+
+	ids := make([]string, 0, len(files))
+	for id := range files {
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		for _, file := range files[id] {
+			for _, match := range unsourced[file.Size] {
+				if out.FileSource[match.ID] != "" {
+					continue // a download that sorts earlier already backs it
+				}
+				out.FileSource[match.ID] = id
+				out.Grabbed[id] = addItems(out.Grabbed[id], match.Items)
+			}
+		}
+	}
+	return out
+}
+
+// addItems appends the items that are not in have yet, keeping the order.
+func addItems(have, items []int) []int {
+	for _, item := range items {
+		found := false
+		for _, h := range have {
+			if h == item {
+				found = true
+				break
+			}
+		}
+		if !found {
+			have = append(have, item)
+		}
+	}
+	return have
+}
