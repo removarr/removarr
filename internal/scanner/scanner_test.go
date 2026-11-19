@@ -471,11 +471,23 @@ func TestRunFailsEveryListWhenFilesCannotBeRead(t *testing.T) {
 	st := run(t, p, withUser())
 
 	for _, list := range []domain.ListKind{domain.ListMovies, domain.ListSeries, domain.ListTorrents} {
-		expect(t, st, list, 0, "download client could not be read: boom")
+		expect(t, st, list, 0, `download client could not be read: boom (download "The.Matrix")`)
+		if got := st.summary.Lists[list].Error; strings.Count(got, "could not be read") != 1 {
+			t.Errorf("%s: error %q, want the client's prefix once", list, got)
+		}
 	}
 	if len(downloads.fileCalls) != 1 {
 		t.Errorf("files were read %d times, want the scan to stop asking after the first failure", len(downloads.fileCalls))
 	}
+}
+
+func TestRunNamesAnUnnamedDownloadByIDWhenItsFilesCannotBeRead(t *testing.T) {
+	p, downloads := manualWorld()
+	downloads.list[0].Name = ""
+	downloads.filesErr = errors.New("boom")
+	st := run(t, p, withUser())
+
+	expect(t, st, domain.ListTorrents, 0, `download client could not be read: boom (download "h1")`)
 }
 
 func TestRunDoesNotReadFilesWhenNoMediaManagerAnswered(t *testing.T) {

@@ -248,7 +248,11 @@ func readFiles(ctx context.Context, client providers.DownloadClient, rules domai
 		}
 		list, err := client.Files(ctx, d.ID)
 		if err != nil {
-			return nil, err
+			label := d.Name
+			if label == "" {
+				label = d.ID
+			}
+			return nil, fmt.Errorf("%w (download %q)", err, label)
 		}
 		files[d.ID] = list
 	}
