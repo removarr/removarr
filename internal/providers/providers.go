@@ -32,6 +32,9 @@ type SeriesManager interface {
 // DownloadClient holds the downloads (qBittorrent in v1).
 type DownloadClient interface {
 	Downloads(ctx context.Context) ([]domain.Download, error)
+	// Files returns the files of one download. It is used to link a download to library
+	// files by content when history does not link it (spec 6.6).
+	Files(ctx context.Context, id string) ([]domain.DownloadFile, error)
 }
 
 // Tester checks that an app can be reached with the configured credentials.

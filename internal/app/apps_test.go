@@ -105,6 +105,13 @@ func TestProvidersForIncompleteApps(t *testing.T) {
 			_, err := p.Downloads.Downloads(ctx)
 			return true, err
 		},
+		"Files": func(p scanner.Providers) (bool, error) {
+			if p.Downloads == nil {
+				return false, nil
+			}
+			_, err := p.Downloads.Files(ctx, "abc")
+			return true, err
+		},
 	}
 	tests := []struct {
 		name  string
@@ -117,8 +124,8 @@ func TestProvidersForIncompleteApps(t *testing.T) {
 		{"sonarr API key without URL", map[string]string{"sonarr.api_key": "sk"}, []string{"Series"}},
 		{"jellyfin URL without API key", map[string]string{"jellyfin.url": "http://jellyfin:8096"}, []string{"Users", "Library"}},
 		{"jellyfin API key without URL", map[string]string{"jellyfin.api_key": "jk"}, []string{"Users", "Library"}},
-		{"qbittorrent username without URL", map[string]string{"qbittorrent.username": "admin"}, []string{"Downloads"}},
-		{"qbittorrent password without URL", map[string]string{"qbittorrent.password": "secret"}, []string{"Downloads"}},
+		{"qbittorrent username without URL", map[string]string{"qbittorrent.username": "admin"}, []string{"Downloads", "Files"}},
+		{"qbittorrent password without URL", map[string]string{"qbittorrent.password": "secret"}, []string{"Downloads", "Files"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

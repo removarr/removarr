@@ -10,6 +10,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/httpjson"
 )
 
 var ctx = context.Background()
@@ -20,6 +23,7 @@ type fakeQbit struct {
 	logins   int               // login attempts seen
 	torrents string            // body of /torrents/info
 	trackers map[string]string // hash -> body of /torrents/trackers
+	files    map[string]string // hash -> body of /torrents/files; an unknown hash gets 404
 }
 
 func (f *fakeQbit) handler() http.Handler {
@@ -53,6 +57,14 @@ func (f *fakeQbit) handler() http.Handler {
 	}))
 	mux.HandleFunc("/api/v2/torrents/trackers", guarded(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, f.trackers[r.URL.Query().Get("hash")])
+	}))
+	mux.HandleFunc("/api/v2/torrents/files", guarded(func(w http.ResponseWriter, r *http.Request) {
+		body, ok := f.files[r.URL.Query().Get("hash")]
+		if !ok {
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
+		}
+		fmt.Fprint(w, body)
 	}))
 	mux.HandleFunc("/api/v2/app/version", guarded(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "v5.0.3")
@@ -108,6 +120,59 @@ func TestDownloadsMapsFields(t *testing.T) {
 	}
 	if d.Tracker != "tracker.example.org" {
 		t.Errorf("Tracker = %q, want only the host name, never the passkey", d.Tracker)
+	}
+}
+
+func TestFilesListsTheFilesOfOneTorrent(t *testing.T) {
+	f := &fakeQbit{files: map[string]string{"abc": `[
+		{"index":0,"name":"Show.S01/Show.S01E01.mkv","size":1500000000,"progress":1,"priority":1},
+		{"index":1,"name":"Show.S01/Show.S01E01.nfo","size":812,"progress":1,"priority":1}
+	]`}}
+	c := start(t, f, "", "")
+	got, err := c.Files(ctx, "abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.DownloadFile{
+		{Name: "Show.S01/Show.S01E01.mkv", Size: 1500000000},
+		{Name: "Show.S01/Show.S01E01.nfo", Size: 812},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Files = %+v, want %+v", got, want)
+	}
+}
+
+func TestFilesOfATorrentWithoutFilesIsEmptyNotNil(t *testing.T) {
+	c := start(t, &fakeQbit{files: map[string]string{"abc": `[]`}}, "", "")
+	got, err := c.Files(ctx, "abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Errorf("Files = %#v, want an empty, non-nil list", got)
+	}
+}
+
+// A torrent removed between listing the torrents and asking for its files answers 404.
+// That must be an error, so the scan does not go on with a partial answer.
+func TestFilesOfAnUnknownTorrentIsAnError(t *testing.T) {
+	c := start(t, &fakeQbit{files: map[string]string{}}, "", "")
+	_, err := c.Files(ctx, "gone")
+	var status *httpjson.StatusError
+	if !errors.As(err, &status) || status.Status != http.StatusNotFound {
+		t.Errorf("err = %v, want a 404 status error", err)
+	}
+}
+
+func TestFilesLogsInWhenNeeded(t *testing.T) {
+	f := &fakeQbit{auth: true, files: map[string]string{"abc": `[{"name":"a.mkv","size":7}]`}}
+	c := start(t, f, "admin", "secret")
+	got, err := c.Files(ctx, "abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Size != 7 || f.logins != 1 {
+		t.Errorf("Files = %+v after %d logins, want one file after one login", got, f.logins)
 	}
 }
 

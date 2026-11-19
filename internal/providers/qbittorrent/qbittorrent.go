@@ -107,6 +107,26 @@ func (c *Client) Downloads(ctx context.Context) ([]domain.Download, error) {
 	return out, nil
 }
 
+// Files returns the files of one torrent.
+func (c *Client) Files(ctx context.Context, id string) ([]domain.DownloadFile, error) {
+	body, err := c.get(ctx, "/api/v2/torrents/files", url.Values{"hash": {id}})
+	if err != nil {
+		return nil, fmt.Errorf("files of a torrent: %w", err)
+	}
+	var raw []struct {
+		Name string `json:"name"`
+		Size int64  `json:"size"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("files of a torrent: decode response: %w", err)
+	}
+	out := make([]domain.DownloadFile, 0, len(raw))
+	for _, f := range raw {
+		out = append(out, domain.DownloadFile{Name: f.Name, Size: f.Size})
+	}
+	return out, nil
+}
+
 // Test checks the connection and returns the app name and version.
 func (c *Client) Test(ctx context.Context) (string, error) {
 	body, err := c.get(ctx, "/api/v2/app/version", nil)

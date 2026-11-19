@@ -47,10 +47,18 @@ type fakeSeries struct {
 func (f *fakeSeries) Series(context.Context) (domain.SeriesSnapshot, error) { return f.snap, f.err }
 
 type fakeDownloads struct {
-	list    []domain.Download
-	err     error
-	entered chan struct{} // when set, receives once Downloads has been called
-	release chan struct{} // when set, Downloads waits until it is closed
+	list      []domain.Download
+	err       error
+	files     map[string][]domain.DownloadFile // download ID -> its files
+	filesErr  error
+	fileCalls []string      // the download IDs Files was asked for, in order
+	entered   chan struct{} // when set, receives once Downloads has been called
+	release   chan struct{} // when set, Downloads waits until it is closed
+}
+
+func (f *fakeDownloads) Files(_ context.Context, id string) ([]domain.DownloadFile, error) {
+	f.fileCalls = append(f.fileCalls, id)
+	return f.files[id], f.filesErr
 }
 
 func (f *fakeDownloads) Downloads(context.Context) ([]domain.Download, error) {

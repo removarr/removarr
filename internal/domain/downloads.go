@@ -16,3 +16,9 @@ type Download struct {
 	SeedingTime *time.Duration // nil for clients that do not seed
 	Tracker     string         // tracker host name; empty when unknown
 }
+
+// DownloadFile is one file inside a download, as the download client reports it.
+type DownloadFile struct {
+	Name string // path of the file inside the download
+	Size int64  // size in bytes
+}

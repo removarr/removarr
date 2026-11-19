@@ -48,6 +48,9 @@ func (incomplete) Series(context.Context) (domain.SeriesSnapshot, error) {
 	return domain.SeriesSnapshot{}, ErrIncomplete
 }
 func (incomplete) Downloads(context.Context) ([]domain.Download, error) { return nil, ErrIncomplete }
+func (incomplete) Files(context.Context, string) ([]domain.DownloadFile, error) {
+	return nil, ErrIncomplete
+}
 
 var (
 	_ providers.MediaServer    = incomplete{}
