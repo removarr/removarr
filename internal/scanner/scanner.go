@@ -173,6 +173,9 @@ type Fetched struct {
 	Movies    Source[domain.MovieSnapshot]
 	Series    Source[domain.SeriesSnapshot]
 	Downloads Source[[]domain.Download]
+	// Files holds the files of the downloads that needed the content check (spec 6.6),
+	// by download ID. It is nil when no file list was read.
+	Files map[string][]domain.DownloadFile
 }
 
 // fetch reads the apps one after another. The media server's library is read only when
@@ -194,6 +197,12 @@ func (s *Service) fetch(ctx context.Context, p Providers, rules domain.Rules) Fe
 		f.Series.Configured = true
 		f.Series.Value, f.Series.Err = p.Series.Series(ctx)
 	}
+	// Without a media manager's answer there is no library file to match against, and no
+	// list that could use the result.
+	if f.Downloads.ok() && (f.Movies.ok() || f.Series.ok()) {
+		s.setPhase("matching downloads to library files")
+		f.Files, f.Downloads.Err = readFiles(ctx, p.Downloads, rules, f)
+	}
 	if p.MediaServer != nil {
 		f.Library.Configured = true
 		if len(rules.CountingUsers) > 0 {
@@ -205,6 +214,88 @@ func (s *Service) fetch(ctx context.Context, p Providers, rules domain.Rules) Fe
 		}
 	}
 	return f
+}
+
+// readFiles asks the download client for the files of every download that history does
+// not link to a library file (spec 6.6). The first failure is returned and nothing else:
+// with a partial answer, a download that holds library files would look unlinked.
+func readFiles(ctx context.Context, client providers.DownloadClient, rules domain.Rules, f Fetched) (map[string][]domain.DownloadFile, error) {
+	history := scan.NewLinkIndex(linkData(&f, nil)...)
+	files := map[string][]domain.DownloadFile{}
+	for _, d := range f.Downloads.Value {
+		if !scan.NeedsContentCheck(rules, history, d) {
+			continue
+		}
+		list, err := client.Files(ctx, d.ID)
+		if err != nil {
+			return nil, err
+		}
+		files[d.ID] = list
+	}
+	return files, nil
+}
+
+// linkData returns the link data of every media manager that answered. With files given,
+// each manager's links are first extended by content (spec 6.6) and stored back into f, so
+// the list rules see the same links the index is built from.
+func linkData(f *Fetched, files map[string][]domain.DownloadFile) []scan.ManagerFiles {
+	var managers []scan.ManagerFiles
+	if f.Movies.ok() {
+		library := movieFiles(f.Movies.Value)
+		if files != nil {
+			f.Movies.Value.Links = scan.ContentLinks(f.Movies.Value.Links, library, files)
+		}
+		managers = append(managers, scan.ManagerFiles{Links: f.Movies.Value.Links, FileIDs: fileIDs(library)})
+	}
+	if f.Series.ok() {
+		library := episodeFiles(f.Series.Value)
+		if files != nil {
+			f.Series.Value.Links = scan.ContentLinks(f.Series.Value.Links, library, files)
+		}
+		managers = append(managers, scan.ManagerFiles{Links: f.Series.Value.Links, FileIDs: fileIDs(library)})
+	}
+	return managers
+}
+
+// movieFiles lists the current movie files with the movie each belongs to.
+func movieFiles(s domain.MovieSnapshot) []scan.LibraryFile {
+	var out []scan.LibraryFile
+	for _, m := range s.Movies {
+		if m.File != nil {
+			out = append(out, scan.LibraryFile{ID: m.File.ID, Size: m.File.Size, Items: []int{m.ID}})
+		}
+	}
+	return out
+}
+
+// episodeFiles lists the current episode files with the episodes each belongs to. The
+// episodes of a multi-episode file share one file.
+func episodeFiles(s domain.SeriesSnapshot) []scan.LibraryFile {
+	var out []scan.LibraryFile
+	at := map[int]int{} // file ID -> its position in out
+	for _, show := range s.Series {
+		for _, e := range show.Episodes {
+			if e.File == nil {
+				continue
+			}
+			i, seen := at[e.File.ID]
+			if !seen {
+				i = len(out)
+				at[e.File.ID] = i
+				out = append(out, scan.LibraryFile{ID: e.File.ID, Size: e.File.Size})
+			}
+			out[i].Items = append(out[i].Items, e.ID)
+		}
+	}
+	return out
+}
+
+func fileIDs(files []scan.LibraryFile) []int {
+	ids := make([]int, 0, len(files))
+	for _, f := range files {
+		ids = append(ids, f.ID)
+	}
+	return ids
 }
 
 const (
@@ -221,7 +312,6 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 	summary := domain.ScanSummary{Lists: map[domain.ListKind]domain.ListSummary{}, RootFolders: []domain.RootFolder{}}
 	candidates := []domain.Candidate{}
 
-	var managers []scan.ManagerFiles
 	seenFolder := map[string]bool{}
 	addFolders := func(folders []domain.RootFolder) {
 		for _, folder := range folders {
@@ -232,28 +322,13 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 		}
 	}
 	if f.Movies.ok() {
-		var fileIDs []int
-		for _, m := range f.Movies.Value.Movies {
-			if m.File != nil {
-				fileIDs = append(fileIDs, m.File.ID)
-			}
-		}
-		managers = append(managers, scan.ManagerFiles{Links: f.Movies.Value.Links, FileIDs: fileIDs})
 		addFolders(f.Movies.Value.RootFolders)
 	}
 	if f.Series.ok() {
-		var fileIDs []int
-		for _, s := range f.Series.Value.Series {
-			for _, e := range s.Episodes {
-				if e.File != nil {
-					fileIDs = append(fileIDs, e.File.ID)
-				}
-			}
-		}
-		managers = append(managers, scan.ManagerFiles{Links: f.Series.Value.Links, FileIDs: fileIDs})
 		addFolders(f.Series.Value.RootFolders)
 	}
-	index := scan.NewLinkIndex(managers...)
+	// f is this function's own copy, so extending its links by content stays local.
+	index := scan.NewLinkIndex(linkData(&f, f.Files)...)
 
 	add := func(list domain.ListKind, problem string, compute func() scan.ListResult) {
 		if problem != "" {

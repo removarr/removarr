@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -329,5 +330,118 @@ func TestAScanThatCannotStartIsReported(t *testing.T) {
 	status := svc.Status()
 	if status.Running || !strings.Contains(status.LastError, "database is locked") {
 		t.Errorf("status = %+v, want idle with the error kept", status)
+	}
+}
+
+const mb = int64(1) << 20
+
+// manualWorld is world() after a manual import: history no longer links the movie's file
+// to torrent h1, but h1 still holds a file of exactly the movie file's size.
+func manualWorld() (Providers, *fakeDownloads) {
+	p, _ := world()
+	movies := p.Movies.(*fakeMovies)
+	movies.snap.Movies[0].File = &domain.MediaFile{ID: 10, Size: 700 * mb}
+	movies.snap.Links = domain.Links{Grabbed: map[string][]int{}, FileSource: map[int]string{}, Queue: map[string]bool{}}
+	downloads := p.Downloads.(*fakeDownloads)
+	downloads.files = map[string][]domain.DownloadFile{
+		"h1":      {{Name: "The.Matrix.mkv", Size: 700 * mb}, {Name: "The.Matrix.nfo", Size: 900}},
+		"orphan1": {{Name: "Unknown.mkv", Size: 650 * mb}},
+	}
+	return p, downloads
+}
+
+func TestRunLinksATorrentToAManuallyImportedFileByContent(t *testing.T) {
+	p, downloads := manualWorld()
+	st := run(t, p, withUser())
+
+	expect(t, st, domain.ListMovies, 1, "")
+	expect(t, st, domain.ListTorrents, 1, "")
+	sawMovie := false
+	for _, c := range st.candidates {
+		switch c.Key {
+		case "hash:h1":
+			t.Errorf("h1 is listed as %s although it holds the movie's file", c.Reason)
+		case "tmdb:603":
+			sawMovie = true
+			if len(c.Torrents) != 1 || c.Torrents[0].ID != "h1" {
+				t.Errorf("deleting the movie would remove torrents %+v, want h1", c.Torrents)
+			}
+		}
+	}
+	if !sawMovie {
+		t.Error("the movie row is missing")
+	}
+	if !reflect.DeepEqual(downloads.fileCalls, []string{"h1", "orphan1"}) {
+		t.Errorf("files were read for %v, want h1 and orphan1: history links neither", downloads.fileCalls)
+	}
+}
+
+func TestRunReadsFilesOnlyForDownloadsHistoryDoesNotLink(t *testing.T) {
+	p, _ := world() // history links h1 to the movie's file
+	downloads := p.Downloads.(*fakeDownloads)
+	downloads.list = append(downloads.list,
+		domain.Download{ID: "queued1", Name: "Still.Importing"},
+		domain.Download{ID: "game1", Name: "A.Game", Category: "games"},
+	)
+	p.Series.(*fakeSeries).snap.Links.Queue["queued1"] = true
+	r := withUser()
+	r.ExcludedCategories = []string{"games"}
+	run(t, p, r)
+
+	if !reflect.DeepEqual(downloads.fileCalls, []string{"orphan1"}) {
+		t.Errorf("files were read for %v, want only orphan1", downloads.fileCalls)
+	}
+}
+
+// A file list that cannot be read is an incomplete answer from the download client
+// (spec 6.8, rule 5): no list may be produced from it.
+func TestRunFailsEveryListWhenFilesCannotBeRead(t *testing.T) {
+	p, downloads := manualWorld()
+	downloads.filesErr = errors.New("boom")
+	st := run(t, p, withUser())
+
+	for _, list := range []domain.ListKind{domain.ListMovies, domain.ListSeries, domain.ListTorrents} {
+		expect(t, st, list, 0, "download client could not be read: boom")
+	}
+	if len(downloads.fileCalls) != 1 {
+		t.Errorf("files were read %d times, want the scan to stop asking after the first failure", len(downloads.fileCalls))
+	}
+}
+
+func TestRunDoesNotReadFilesWhenNoMediaManagerAnswered(t *testing.T) {
+	p, downloads := manualWorld()
+	p.Movies = &fakeMovies{err: errors.New("timeout")}
+	p.Series = nil
+	run(t, p, withUser())
+
+	if len(downloads.fileCalls) != 0 {
+		t.Errorf("files were read for %v, want none: without a media manager there is nothing to match", downloads.fileCalls)
+	}
+}
+
+func TestComputeLinksAMultiEpisodeFileByContent(t *testing.T) {
+	file := &domain.MediaFile{ID: 50, Size: 900 * mb}
+	f := Fetched{
+		Series: Source[domain.SeriesSnapshot]{Configured: true, Value: domain.SeriesSnapshot{
+			Series: []domain.Series{{
+				ID: 1, Title: "The Show", Ended: true, IDs: domain.ExternalIDs{TVDB: "100"},
+				Episodes: []domain.Episode{
+					{ID: 11, Season: 1, Number: 1, File: file},
+					{ID: 12, Season: 1, Number: 2, File: file},
+				},
+			}},
+			Links: domain.Links{Grabbed: map[string][]int{}, FileSource: map[int]string{}, Queue: map[string]bool{}},
+		}},
+		Downloads: Source[[]domain.Download]{Configured: true, Value: []domain.Download{{ID: "double", Name: "The.Show.S01E01E02"}}},
+		Files:     map[string][]domain.DownloadFile{"double": {{Name: "The.Show.S01E01E02.mkv", Size: 900 * mb}}},
+	}
+
+	summary, candidates := Compute(domain.DefaultRules(), now, f)
+
+	if got := summary.Lists[domain.ListTorrents]; got.Error != "" || got.Candidates != 0 || len(candidates) != 0 {
+		t.Errorf("torrent list = %+v with rows %+v, want none: the torrent holds the episodes' file", got, candidates)
+	}
+	if len(f.Series.Value.Links.FileSource) != 0 || len(f.Series.Value.Links.Grabbed) != 0 {
+		t.Errorf("Compute changed the links it was given: %+v", f.Series.Value.Links)
 	}
 }
