@@ -156,23 +156,55 @@ func TestNeedsContentCheck(t *testing.T) {
 	r.ExcludedCategories = []string{"games"}
 	r.ExcludedTags = []string{"keep"}
 
+	// ofSize gives a download the size the client reports for it.
+	ofSize := func(size int64) func(d *domain.Download) { return func(d *domain.Download) { d.Size = size } }
+	const sourced = 700 * mb // what history says "linked" is the source of
+
 	tests := []struct {
-		name string
-		d    domain.Download
-		want bool
+		name    string
+		d       domain.Download
+		sourced int64
+		want    bool
 	}{
-		{"a download no manager knows", dl("stray"), true},
-		{"a download history knows but that backs nothing", dl("replaced"), true},
-		{"a download history shows backing a file", dl("linked"), false},
-		{"a queued download", dl("queued"), false},
-		{"a download in an excluded category", dl("stray", func(d *domain.Download) { d.Category = "games" }), false},
-		{"a download with an excluded tag", dl("stray", func(d *domain.Download) { d.Tags = []string{"keep"} }), false},
-		{"a download without an ID", dl(""), false},
+		{"a download no manager knows", dl("stray"), 0, true},
+		{"a download history knows but that backs nothing", dl("replaced"), 0, true},
+		{"a download history shows backing a file", dl("linked"), 0, false},
+		{"a queued download", dl("queued"), 0, false},
+		{"a download in an excluded category", dl("stray", func(d *domain.Download) { d.Category = "games" }), 0, false},
+		{"a download with an excluded tag", dl("stray", func(d *domain.Download) { d.Tags = []string{"keep"} }), 0, false},
+		{"a download without an ID", dl(""), 0, false},
+		{"a linked download exactly 50 MB larger than its sourced files", dl("linked", ofSize(sourced+MinContentSize)), sourced, true},
+		{"a linked download 50 MB minus one byte larger", dl("linked", ofSize(sourced+MinContentSize-1)), sourced, false},
+		{"a linked download the size of its sourced files", dl("linked", ofSize(sourced)), sourced, false},
+		{"a linked download smaller than its sourced files", dl("linked", ofSize(sourced-MinContentSize)), sourced, false},
+		{"a larger linked download that is queued", dl("queued", ofSize(sourced+MinContentSize)), sourced, false},
+		{"a larger linked download in an excluded category", dl("linked", ofSize(sourced+MinContentSize), func(d *domain.Download) { d.Category = "games" }), sourced, false},
+		{"a larger linked download with an excluded tag", dl("linked", ofSize(sourced+MinContentSize), func(d *domain.Download) { d.Tags = []string{"keep"} }), sourced, false},
 	}
 	for _, tt := range tests {
-		if got := NeedsContentCheck(r, x, tt.d); got != tt.want {
+		if got := NeedsContentCheck(r, x, tt.d, tt.sourced); got != tt.want {
 			t.Errorf("%s: NeedsContentCheck = %v, want %v", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestSourcedBytes(t *testing.T) {
+	l := links()
+	l.FileSource[10] = "pack"
+	l.FileSource[11] = "pack"
+	l.FileSource[12] = "single"
+	l.FileSource[99] = "gone" // no longer a library file
+	library := []LibraryFile{
+		{ID: 10, Size: 700 * mb, Items: []int{1}},
+		{ID: 11, Size: 800 * mb, Items: []int{2, 3}},
+		{ID: 12, Size: 900 * mb, Items: []int{4}},
+		{ID: 13, Size: 1000 * mb, Items: []int{5}}, // history names no source
+	}
+
+	got := SourcedBytes(l, library)
+	want := map[string]int64{"pack": 1500 * mb, "single": 900 * mb}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SourcedBytes = %v, want %v", got, want)
 	}
 }
 

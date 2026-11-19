@@ -378,7 +378,11 @@ func TestRunLinksATorrentToAManuallyImportedFileByContent(t *testing.T) {
 
 func TestRunReadsFilesOnlyForDownloadsHistoryDoesNotLink(t *testing.T) {
 	p, _ := world() // history links h1 to the movie's file
+	// h1 is larger than the movie's file, but by less than 50 MB: it holds no further
+	// library file, so it is not asked.
+	p.Movies.(*fakeMovies).snap.Movies[0].File = &domain.MediaFile{ID: 10, Size: 700 * mb}
 	downloads := p.Downloads.(*fakeDownloads)
+	downloads.list[0].Size = 750*mb - 1
 	downloads.list = append(downloads.list,
 		domain.Download{ID: "queued1", Name: "Still.Importing"},
 		domain.Download{ID: "game1", Name: "A.Game", Category: "games"},
@@ -391,6 +395,72 @@ func TestRunReadsFilesOnlyForDownloadsHistoryDoesNotLink(t *testing.T) {
 	if !reflect.DeepEqual(downloads.fileCalls, []string{"orphan1"}) {
 		t.Errorf("files were read for %v, want only orphan1", downloads.fileCalls)
 	}
+}
+
+// mixedPackWorld returns providers for an ended two-season series held by one pack. History
+// links the pack to season 1's file only; season 2's file was imported from the pack by
+// hand, so history names no source for it. unwatched lists the seasons nobody has played.
+func mixedPackWorld(unwatched ...int) (Providers, *fakeDownloads) {
+	states := func(season int) map[string]domain.UserState {
+		for _, s := range unwatched {
+			if s == season {
+				return map[string]domain.UserState{"a": {}}
+			}
+		}
+		return map[string]domain.UserState{"a": {Played: true}}
+	}
+	server := &fakeServer{lib: domain.Library{
+		Series: []domain.ServerSeries{{ID: "s1", IDs: domain.ExternalIDs{TVDB: "200"}}},
+		Episodes: []domain.ServerEpisode{
+			{SeriesID: "s1", Season: 1, Episode: 1, States: states(1)},
+			{SeriesID: "s1", Season: 2, Episode: 1, States: states(2)},
+		},
+	}}
+	series := &fakeSeries{snap: domain.SeriesSnapshot{
+		Series: []domain.Series{{
+			ID: 7, Title: "The Pack Show", Ended: true, IDs: domain.ExternalIDs{TVDB: "200"},
+			Episodes: []domain.Episode{
+				{ID: 21, Season: 1, Number: 1, File: &domain.MediaFile{ID: 31, Size: 800 * mb}},
+				{ID: 22, Season: 2, Number: 1, File: &domain.MediaFile{ID: 32, Size: 900 * mb}},
+			},
+		}},
+		Links: domain.Links{
+			Grabbed:    map[string][]int{"pack": {21}},
+			FileSource: map[int]string{31: "pack"},
+			Queue:      map[string]bool{},
+		},
+	}}
+	downloads := &fakeDownloads{
+		list: []domain.Download{{ID: "pack", Name: "The.Pack.Show.S01-S02", Size: 1700*mb + 4096}},
+		files: map[string][]domain.DownloadFile{"pack": {
+			{Name: "S01E01.mkv", Size: 800 * mb},
+			{Name: "S02E01.mkv", Size: 900 * mb},
+			{Name: "pack.nfo", Size: 4096},
+		}},
+	}
+	return Providers{MediaServer: server, Series: series, Downloads: downloads}, downloads
+}
+
+func TestRunAsksALinkedPackThatHoldsMoreThanHistorySays(t *testing.T) {
+	p, downloads := mixedPackWorld()
+	st := run(t, p, withUser())
+
+	if !reflect.DeepEqual(downloads.fileCalls, []string{"pack"}) {
+		t.Errorf("files were read for %v, want the pack: it is 900 MB larger than the file history links to it", downloads.fileCalls)
+	}
+	expectRow(t, st.candidates, domain.SeriesKey("200"), "pack")
+	expectNoTorrentRows(t, st.summary, st.candidates)
+}
+
+func TestRunKeepsAMixedPackWhileItBacksAnotherSeason(t *testing.T) {
+	p, _ := mixedPackWorld(2)
+	r := withUser()
+	r.SeriesUnit = domain.UnitSeason
+	st := run(t, p, r)
+
+	// The pack still holds season 2's file, which was imported from it by hand.
+	expectRow(t, st.candidates, domain.SeasonKey("200", 1))
+	expectNoTorrentRows(t, st.summary, st.candidates)
 }
 
 // A file list that cannot be read is an incomplete answer from the download client

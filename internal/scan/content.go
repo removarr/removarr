@@ -19,10 +19,34 @@ type LibraryFile struct {
 }
 
 // NeedsContentCheck reports whether a download's files are needed for linking by content
-// (spec 6.6): the rules do not exclude the download, it is not in a queue, and history
-// does not show it backing a library file. x must be built from history alone.
-func NeedsContentCheck(r domain.Rules, x *LinkIndex, d domain.Download) bool {
-	return d.ID != "" && !excluded(r, d) && !x.Queued(d.ID) && x.Backing(d.ID) == 0
+// (spec 6.6): the rules do not exclude the download, it is not in a queue, and either
+// history shows it backing no library file, or the download is at least MinContentSize
+// larger than the files history names it the source of, so it may hold a file imported by
+// hand as well. sourced is the total size of the library files that history names d as the
+// source of, summed over every media manager that answered. x must be built from history
+// alone.
+func NeedsContentCheck(r domain.Rules, x *LinkIndex, d domain.Download, sourced int64) bool {
+	if d.ID == "" || excluded(r, d) || x.Queued(d.ID) {
+		return false
+	}
+	return x.Backing(d.ID) == 0 || d.Size-sourced >= MinContentSize
+}
+
+// SourcedBytes returns, per download, the total size of the library files that links
+// names the download as the source of.
+func SourcedBytes(links domain.Links, library []LibraryFile) map[string]int64 {
+	out := map[string]int64{}
+	seen := map[int]bool{}
+	for _, f := range library {
+		if seen[f.ID] {
+			continue
+		}
+		seen[f.ID] = true
+		if id := links.FileSource[f.ID]; id != "" {
+			out[id] += f.Size
+		}
+	}
+	return out
 }
 
 // ContentLinks returns links extended by content (spec 6.6). A download backs a library

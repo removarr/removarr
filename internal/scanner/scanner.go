@@ -179,7 +179,11 @@ type Fetched struct {
 }
 
 // fetch reads the apps one after another. The media server's library is read only when
-// counting users are selected, because without them no watched list can be produced.
+// counting users are selected, because without them no watched list can be produced. Once
+// the download client and at least one media manager have answered, it reads the file
+// lists linking by content needs (spec 6.6): those of the downloads history does not link
+// to a library file, and those of the downloads at least 50 MB larger than the library
+// files history names them the source of.
 func (s *Service) fetch(ctx context.Context, p Providers, rules domain.Rules) Fetched {
 	var f Fetched
 	if p.Downloads != nil {
@@ -217,13 +221,29 @@ func (s *Service) fetch(ctx context.Context, p Providers, rules domain.Rules) Fe
 }
 
 // readFiles asks the download client for the files of every download that history does
-// not link to a library file (spec 6.6). The first failure is returned and nothing else:
-// with a partial answer, a download that holds library files would look unlinked.
+// not link to a library file, and of every download that is at least 50 MB larger than the
+// library files history names it the source of (spec 6.6). The first failure is returned
+// and nothing else: with a partial answer, a download that holds library files would look
+// unlinked.
 func readFiles(ctx context.Context, client providers.DownloadClient, rules domain.Rules, f Fetched) (map[string][]domain.DownloadFile, error) {
 	history := scan.NewLinkIndex(linkData(&f, nil)...)
+	// A download ID means the same download in both managers; file IDs do not, so each
+	// manager's links are matched against its own files and the results added.
+	sourced := map[string]int64{}
+	add := func(bytes map[string]int64) {
+		for id, n := range bytes {
+			sourced[id] += n
+		}
+	}
+	if f.Movies.ok() {
+		add(scan.SourcedBytes(f.Movies.Value.Links, movieFiles(f.Movies.Value)))
+	}
+	if f.Series.ok() {
+		add(scan.SourcedBytes(f.Series.Value.Links, episodeFiles(f.Series.Value)))
+	}
 	files := map[string][]domain.DownloadFile{}
 	for _, d := range f.Downloads.Value {
-		if !scan.NeedsContentCheck(rules, history, d) {
+		if !scan.NeedsContentCheck(rules, history, d, sourced[d.ID]) {
 			continue
 		}
 		list, err := client.Files(ctx, d.ID)
