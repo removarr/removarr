@@ -445,3 +445,168 @@ func TestComputeLinksAMultiEpisodeFileByContent(t *testing.T) {
 		t.Errorf("Compute changed the links it was given: %+v", f.Series.Value.Links)
 	}
 }
+
+// noLinks returns links in which history knows nothing.
+func noLinks() domain.Links {
+	return domain.Links{Grabbed: map[string][]int{}, FileSource: map[int]string{}, Queue: map[string]bool{}}
+}
+
+// crossWorld is fetched data in which the movie manager and the series manager number their
+// files and items from 1 alike: movie 1 has file 10, and episode 1 has a file 10 too. History
+// names no source for any library file. Torrent "movie" holds the movie's file; "pack" holds
+// every file of the two-season series, including the file that episodes 2 and 3 share.
+// unwatched lists the seasons whose episodes nobody has played.
+func crossWorld(unwatched ...int) Fetched {
+	played := map[string]domain.UserState{"a": {Played: true}}
+	states := func(season int) map[string]domain.UserState {
+		for _, s := range unwatched {
+			if s == season {
+				return map[string]domain.UserState{"a": {}}
+			}
+		}
+		return played
+	}
+	shared := &domain.MediaFile{ID: 11, Size: 900 * mb}
+	return Fetched{
+		Users: []domain.User{{ID: "a", Name: "Alice"}},
+		Library: Source[domain.Library]{Configured: true, Value: domain.Library{
+			Movies: []domain.ServerMovie{{ID: "m1", IDs: domain.ExternalIDs{TMDB: "603"}, States: played}},
+			Series: []domain.ServerSeries{{ID: "s1", IDs: domain.ExternalIDs{TVDB: "100"}}},
+			Episodes: []domain.ServerEpisode{
+				{SeriesID: "s1", Season: 1, Episode: 1, States: states(1)},
+				{SeriesID: "s1", Season: 1, Episode: 2, EpisodeEnd: 3, States: states(1)},
+				{SeriesID: "s1", Season: 2, Episode: 1, States: states(2)},
+			},
+		}},
+		Movies: Source[domain.MovieSnapshot]{Configured: true, Value: domain.MovieSnapshot{
+			Movies: []domain.Movie{{
+				ID: 1, Title: "The Matrix", IDs: domain.ExternalIDs{TMDB: "603"},
+				File: &domain.MediaFile{ID: 10, Size: 700 * mb},
+			}},
+			Links: noLinks(),
+		}},
+		Series: Source[domain.SeriesSnapshot]{Configured: true, Value: domain.SeriesSnapshot{
+			Series: []domain.Series{{
+				ID: 5, Title: "The Show", Ended: true, IDs: domain.ExternalIDs{TVDB: "100"},
+				Episodes: []domain.Episode{
+					{ID: 1, Season: 1, Number: 1, File: &domain.MediaFile{ID: 10, Size: 800 * mb}},
+					{ID: 2, Season: 1, Number: 2, File: shared},
+					{ID: 3, Season: 1, Number: 3, File: shared},
+					{ID: 4, Season: 2, Number: 1, File: &domain.MediaFile{ID: 12, Size: 1000 * mb}},
+				},
+			}},
+			Links: noLinks(),
+		}},
+		Downloads: Source[[]domain.Download]{Configured: true, Value: []domain.Download{
+			{ID: "movie", Name: "The.Matrix", Size: 700 * mb},
+			{ID: "pack", Name: "The.Show.S01-S02", Size: 2700*mb + 4096},
+		}},
+		Files: map[string][]domain.DownloadFile{
+			"movie": {{Name: "The.Matrix.mkv", Size: 700 * mb}},
+			"pack": {
+				{Name: "S01E01.mkv", Size: 800 * mb},
+				{Name: "S01E02E03.mkv", Size: 900 * mb},
+				{Name: "S02E01.mkv", Size: 1000 * mb},
+				{Name: "pack.nfo", Size: 4096},
+			},
+		},
+	}
+}
+
+// rowsByKey returns the rows by key.
+func rowsByKey(candidates []domain.Candidate) map[string]domain.Candidate {
+	out := map[string]domain.Candidate{}
+	for _, c := range candidates {
+		out[c.Key] = c
+	}
+	return out
+}
+
+// expectRow checks that the row with key exists and names exactly the torrents want.
+func expectRow(t *testing.T, candidates []domain.Candidate, key string, want ...string) {
+	t.Helper()
+	c, found := rowsByKey(candidates)[key]
+	if !found {
+		t.Errorf("row %s is missing; rows: %v", key, rowsByKey(candidates))
+		return
+	}
+	got := []string{}
+	for _, torrent := range c.Torrents {
+		got = append(got, torrent.ID)
+	}
+	if want == nil {
+		want = []string{}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("row %s names torrents %v, want %v", key, got, want)
+	}
+}
+
+// expectNoTorrentRows checks that the torrent list was produced and lists nothing.
+func expectNoTorrentRows(t *testing.T, summary domain.ScanSummary, candidates []domain.Candidate) {
+	t.Helper()
+	if got := summary.Lists[domain.ListTorrents]; got.Error != "" || got.Candidates != 0 {
+		t.Errorf("torrent list = %+v, want no rows and no error", got)
+	}
+	for _, c := range candidates {
+		if c.List == domain.ListTorrents {
+			t.Errorf("torrent %s is listed as %s although it holds library files", c.Key, c.Reason)
+		}
+	}
+}
+
+func TestComputeLinksByContentPerManagerWhenIDsAreShared(t *testing.T) {
+	summary, candidates := Compute(withUser(), now, crossWorld())
+
+	expectRow(t, candidates, "tmdb:603", "movie")
+	expectRow(t, candidates, domain.SeriesKey("100"), "pack")
+	expectNoTorrentRows(t, summary, candidates)
+}
+
+func TestComputeKeepsAPackThatStillBacksAnotherSeason(t *testing.T) {
+	r := withUser()
+	r.SeriesUnit = domain.UnitSeason
+	summary, candidates := Compute(r, now, crossWorld(2))
+
+	expectRow(t, candidates, domain.SeasonKey("100", 1))
+	if _, found := rowsByKey(candidates)[domain.SeasonKey("100", 2)]; found {
+		t.Error("season 2 has a row although nobody watched it")
+	}
+	expectRow(t, candidates, "tmdb:603", "movie")
+	expectNoTorrentRows(t, summary, candidates)
+}
+
+// The episodes of one file are normally in one season, so every row that deletes the file
+// holds all of them. This file spans two seasons, so the season 2 row holds only the file's
+// second episode: the torrent goes with that row only if content associates it with that
+// episode too.
+func TestComputeAssociatesEveryEpisodeOfASharedFileByContent(t *testing.T) {
+	shared := &domain.MediaFile{ID: 30, Size: 900 * mb}
+	f := Fetched{
+		Users: []domain.User{{ID: "a", Name: "Alice"}},
+		Library: Source[domain.Library]{Configured: true, Value: domain.Library{
+			Series: []domain.ServerSeries{{ID: "s1", IDs: domain.ExternalIDs{TVDB: "100"}}},
+			Episodes: []domain.ServerEpisode{
+				{SeriesID: "s1", Season: 1, Episode: 1, States: map[string]domain.UserState{"a": {}}},
+				{SeriesID: "s1", Season: 2, Episode: 1, States: map[string]domain.UserState{"a": {Played: true}}},
+			},
+		}},
+		Series: Source[domain.SeriesSnapshot]{Configured: true, Value: domain.SeriesSnapshot{
+			Series: []domain.Series{{
+				ID: 5, Title: "The Show", Ended: true, IDs: domain.ExternalIDs{TVDB: "100"},
+				Episodes: []domain.Episode{
+					{ID: 1, Season: 1, Number: 1, File: shared},
+					{ID: 2, Season: 2, Number: 1, File: shared},
+				},
+			}},
+			Links: noLinks(),
+		}},
+		Downloads: Source[[]domain.Download]{Configured: true, Value: []domain.Download{{ID: "double", Name: "The.Show.Double"}}},
+		Files:     map[string][]domain.DownloadFile{"double": {{Name: "double.mkv", Size: 900 * mb}}},
+	}
+	r := withUser()
+	r.SeriesUnit = domain.UnitSeason
+	_, candidates := Compute(r, now, f)
+
+	expectRow(t, candidates, domain.SeasonKey("100", 2), "double")
+}
