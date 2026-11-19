@@ -21,7 +21,7 @@
 - When files of several downloads match one library file, the download whose ID sorts first backs it.
 - A download linked by content is associated with the movie, or with every episode, the matched file belongs to.
 - File lists are requested only for downloads that the rules do not exclude, that are not in a media manager's queue, and that history does not show backing a library file.
-- If any needed file list cannot be read, no list is produced (spec 6.8, rule 5). The lists' error reads `The download client could not be read: files of a download: <cause>`.
+- If any needed file list cannot be read, no list is produced (spec 6.8, rule 5). The lists' error reads `The download client could not be read: <cause>`, where the cause is the download client's own error; qBittorrent's begins with `files of a torrent:`. The scanner adds no prefix of its own.
 - Secrets are never logged and never put into an error.
 - Everything else behaves as before. Existing tests keep passing unchanged, except where a step below changes one.
 
@@ -857,7 +857,7 @@ func TestRunFailsEveryListWhenFilesCannotBeRead(t *testing.T) {
 	st := run(t, p, withUser())
 
 	for _, list := range []domain.ListKind{domain.ListMovies, domain.ListSeries, domain.ListTorrents} {
-		expect(t, st, list, 0, "download client could not be read: files of a download: boom")
+		expect(t, st, list, 0, "download client could not be read: boom")
 	}
 	if len(downloads.fileCalls) != 1 {
 		t.Errorf("files were read %d times, want the scan to stop asking after the first failure", len(downloads.fileCalls))
@@ -975,7 +975,7 @@ func readFiles(ctx context.Context, client providers.DownloadClient, rules domai
 		}
 		list, err := client.Files(ctx, d.ID)
 		if err != nil {
-			return nil, fmt.Errorf("files of a download: %w", err)
+			return nil, err
 		}
 		files[d.ID] = list
 	}
