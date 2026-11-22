@@ -150,6 +150,12 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 
 			c := row.Candidate
 			c.Torrents, c.BelowSeedMin = torrentInfos(r, inClient, named)
+			// Data outside the library is information only (spec 6.7).
+			for k := range c.Torrents {
+				if out := c.Torrents[k].Size - x.BackedBytes(c.Torrents[k].ID); out >= MinContentSize {
+					c.Torrents[k].OutsideLibrary = out
+				}
+			}
 			c.TiedWith = nil
 			for _, j := range group {
 				if j == i {

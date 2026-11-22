@@ -441,3 +441,67 @@ func TestWholeTorrentsFlagsSeedingAndKeepsTheRow(t *testing.T) {
 		t.Errorf("candidate = %+v, want the row's fields and the seeding flag", c)
 	}
 }
+
+// A row states, for each torrent it names, how much of it is not in the library, when that is
+// 50 MB or more. It is information only.
+func TestWholeTorrentsStatesDataOutsideTheLibrary(t *testing.T) {
+	const mb = int64(1 << 20)
+	sized := func(id int, size int64) LibraryFile { return LibraryFile{ID: id, Size: size} }
+	tests := []struct {
+		name   string
+		size   int64 // the torrent's size
+		movie  []LibraryFile
+		series []LibraryFile
+		want   int64
+	}{
+		{"a pack larger than the library files it backs", 3000 * mb, []LibraryFile{sized(10, 2000*mb)}, nil, 1000 * mb},
+		{"a difference of 50 MB minus one byte", 50*mb - 1 + 100, []LibraryFile{sized(10, 100)}, nil, 0},
+		{"a difference of exactly 50 MB", 50*mb + 100, []LibraryFile{sized(10, 100)}, nil, 50 * mb},
+		{"a torrent smaller than the files it backs", 100, []LibraryFile{sized(10, 500*mb)}, nil, 0},
+		{"a torrent backing a movie file and an episode file", 1000 * mb, []LibraryFile{sized(10, 300*mb)}, []LibraryFile{sized(11, 200*mb)}, 500 * mb},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			x := NewLinkIndex(
+				ManagerFiles{Manager: ManagerMovies, Links: link(nil, map[int]string{10: "x"}), Files: tt.movie},
+				ManagerFiles{Manager: ManagerSeries, Links: link(nil, map[int]string{11: "x"}), Files: tt.series},
+			)
+			movies := &ListResult{Rows: []Row{movieRow("tmdb:1", 1, 10)}}
+			series := &ListResult{}
+			if len(tt.series) > 0 {
+				series.Rows = []Row{seasonRow(1, []int{1}, []int{11})}
+			}
+			WholeTorrents(domain.DefaultRules(), x, []domain.Download{dl("x", func(d *domain.Download) { d.Size = tt.size })}, movies, series)
+			if len(movies.Candidates) != 1 {
+				t.Fatalf("movie candidates = %d, want 1", len(movies.Candidates))
+			}
+			for _, l := range []*ListResult{movies, series} {
+				for _, c := range l.Candidates {
+					if len(c.Torrents) != 1 || c.Torrents[0].OutsideLibrary != tt.want {
+						t.Errorf("%s: torrents = %+v, want OutsideLibrary %d", c.Key, c.Torrents, tt.want)
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("an old download that backs nothing", func(t *testing.T) {
+		x := NewLinkIndex(ManagerFiles{Manager: ManagerMovies, Links: link(map[string][]int{"old": {1}}, nil), Files: libFiles(10)})
+		movies := &ListResult{Rows: []Row{movieRow("tmdb:1", 1, 10)}}
+		WholeTorrents(domain.DefaultRules(), x, []domain.Download{dl("old", func(d *domain.Download) { d.Size = 700 * mb })}, movies)
+		if len(movies.Candidates) != 1 || len(movies.Candidates[0].Torrents) != 1 || movies.Candidates[0].Torrents[0].OutsideLibrary != 700*mb {
+			t.Fatalf("candidates = %+v, want one torrent with its whole size outside", movies.Candidates)
+		}
+	})
+
+	t.Run("a row of the torrent list does not state it", func(t *testing.T) {
+		res := Torrents(TorrentsInput{
+			Rules:     domain.DefaultRules(),
+			Downloads: []domain.Download{dl("orphan", func(d *domain.Download) { d.Size = 700 * mb })},
+			Index:     NewLinkIndex(),
+		})
+		if len(res.Candidates) != 1 || res.Candidates[0].Torrents[0].OutsideLibrary != 0 {
+			t.Fatalf("candidates = %+v, want OutsideLibrary unset", res.Candidates)
+		}
+	})
+}

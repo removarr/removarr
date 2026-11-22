@@ -34,6 +34,8 @@ type TorrentInfo struct {
 	SeedingDays  *float64  `json:"seedingDays"`
 	AddedAt      time.Time `json:"addedAt"`
 	BelowSeedMin bool      `json:"belowSeedMin"`
+	// OutsideLibrary is how many bytes of the torrent are not in the library, when that is 50 MB or more.
+	OutsideLibrary int64 `json:"outsideLibrary,omitempty"`
 }
 
 // Candidate is one row in a list: something removarr suggests deleting.
