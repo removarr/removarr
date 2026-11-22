@@ -168,6 +168,7 @@ Only episodes and movies that have a file are considered. "Regular seasons" mean
 - A group with a blocking torrent **waits**. None of its rows is a candidate or listed, and the scan summary counts them as waiting.
 - In a group of several rows that does not wait, the rows are **tied**: they are deleted together or not at all (6.7). Each is listed and names the rows it is tied to.
 - An ignored row (6.5) stays, so the group it belongs to waits.
+- A library file goes as a whole too. Rows that would delete the same file belong to one group, and a file blocks its group when it holds an episode that no row of the group would delete. Example: one file holds the last episode of a season and the first of the next, and only one of the two seasons qualifies. Deleting it would remove an episode that has not been watched.
 
 The check uses the library files of both media managers. A torrent shared between a movie and a series is therefore never judged from one side only: when a configured media manager did not answer, the groups cannot be formed and neither watched list is produced (6.8, rule 5).
 

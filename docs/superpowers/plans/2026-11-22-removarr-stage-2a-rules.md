@@ -211,6 +211,29 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 
 ---
 
+### Task 3b: Whole files (added after the review of Task 3)
+
+Task 3's implementer and reviewer found a gap that is older than this plan: a season row deletes every file of its season, also a file that holds an episode of another season that does not qualify, or a special of a series that is still airing. That removes an episode that has not been watched.
+
+**Files:** modify `internal/scan/links.go`, `whole.go`, `series.go`, their tests, and `internal/scanner/scanner_test.go`.
+
+**Rule (spec 6.3, last bullet of "Whole torrents"):** rows that would delete the same library file belong to one group, and a file blocks its group when it holds an item that no row of the group would delete. It applies whether or not a torrent backs the file.
+
+**What it needs:** the index keeps, per (manager, file), the items the file holds, from `ManagerFiles.Files[i].Items`. `WholeTorrents` also joins rows on (manager, file). For each group the deleted items are the union of the rows' `ItemIDs`, keyed with the manager; the group waits when an item of one of its files is missing from that set.
+
+**Tests:**
+
+1. Per-season mode, one file holds an episode of season 1 and one of season 2, season 2 qualifies and season 1 does not: the season 2 row waits, with or without a torrent backing the file.
+2. Both seasons qualify as two season rows that share the file and no torrent: both listed, tied to each other.
+3. A still-airing series whose regular-season file also holds a special: the series row waits. The same series ended: listed.
+4. Equal file and item numbers in the two managers neither tie nor block.
+5. A series row that deletes both seasons of a file spanning them lists the file once: `FileIDs` holds it once and `Size` counts it once (spec 6.9).
+6. `TestComputeAssociatesEveryEpisodeOfASharedFileByContent` changes: its season row now waits. What it pinned about associations stays pinned by the unit test of `EpisodeFiles`.
+
+Commits: `feat: never delete a library file that holds an episode that stays`, `fix: count a file that spans two seasons once in a series row`.
+
+---
+
 ### Task 4: Data outside the library
 
 **Files:** modify `internal/domain/candidate.go`, `internal/scan/whole.go`, `whole_test.go`.
