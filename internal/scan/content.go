@@ -32,23 +32,6 @@ func NeedsContentCheck(r domain.Rules, x *LinkIndex, d domain.Download, sourced 
 	return x.Backing(d.ID) == 0 || d.Size-sourced >= MinContentSize
 }
 
-// SourcedBytes returns, per download, the total size of the library files that links
-// names the download as the source of.
-func SourcedBytes(links domain.Links, library []LibraryFile) map[string]int64 {
-	out := map[string]int64{}
-	seen := map[int]bool{}
-	for _, f := range library {
-		if seen[f.ID] {
-			continue
-		}
-		seen[f.ID] = true
-		if id := links.FileSource[f.ID]; id != "" {
-			out[id] += f.Size
-		}
-	}
-	return out
-}
-
 // ContentLinks returns links extended by content (spec 6.6). A download backs a library
 // file when one of the download's files has exactly the library file's size, that size is
 // at least MinContentSize, and links names no source for the library file. The download

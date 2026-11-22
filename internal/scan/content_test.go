@@ -188,26 +188,6 @@ func TestNeedsContentCheck(t *testing.T) {
 	}
 }
 
-func TestSourcedBytes(t *testing.T) {
-	l := links()
-	l.FileSource[10] = "pack"
-	l.FileSource[11] = "pack"
-	l.FileSource[12] = "single"
-	l.FileSource[99] = "gone" // no longer a library file
-	library := []LibraryFile{
-		{ID: 10, Size: 700 * mb, Items: []int{1}},
-		{ID: 11, Size: 800 * mb, Items: []int{2, 3}},
-		{ID: 12, Size: 900 * mb, Items: []int{4}},
-		{ID: 13, Size: 1000 * mb, Items: []int{5}}, // history names no source
-	}
-
-	got := SourcedBytes(l, library)
-	want := map[string]int64{"pack": 1500 * mb, "single": 900 * mb}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("SourcedBytes = %v, want %v", got, want)
-	}
-}
-
 // A torrent linked by content must behave like one linked by history everywhere else: it
 // is not listed as an orphan, and a deletion that leaves it backing nothing removes it.
 func TestAContentLinkedDownloadIsNotListedAndGoesWithItsItems(t *testing.T) {
