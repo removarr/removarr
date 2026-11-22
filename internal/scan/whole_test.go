@@ -268,6 +268,25 @@ func TestWholeTorrents(t *testing.T) {
 			wantSeries: []listedRow{{key: "tvdb:100:s1", torrents: []string{"x"}, tied: []string{"movies/tmdb:1"}}},
 		},
 		{
+			name:       "10c. a waiting group across the two lists counts each row in its own list",
+			movies:     ManagerFiles{Links: link(nil, map[int]string{10: "x"}), Files: libFiles(10)},
+			series:     ManagerFiles{Links: link(nil, map[int]string{11: "x", 12: "x"}), Files: libFiles(11, 12)},
+			downloads:  []string{"x"},
+			movieRows:  []Row{movieRow("tmdb:1", 1, 10)},
+			seriesRows: []Row{seasonRow(1, []int{11}, []int{11})},
+			// File 12 is a series file no row deletes.
+			waitingMovies: 1,
+			waitingSeries: 1,
+		},
+		{
+			name:          "10d. a movie file with the same number as a deleted episode file still stays",
+			movies:        ManagerFiles{Links: link(nil, map[int]string{10: "x"}), Files: libFiles(10)},
+			series:        ManagerFiles{Links: link(nil, map[int]string{10: "x"}), Files: libFiles(10)},
+			downloads:     []string{"x"},
+			seriesRows:    []Row{seasonRow(1, []int{1}, []int{10})},
+			waitingSeries: 1,
+		},
+		{
 			name:          "10b. the same torrent with only the movie qualifying holds it back",
 			movies:        ManagerFiles{Links: link(map[string][]int{"x": {1}}, map[int]string{10: "x"}), Files: libFiles(10)},
 			series:        ManagerFiles{Links: link(map[string][]int{"x": {11}}, map[int]string{11: "x"}), Files: libFiles(11)},
