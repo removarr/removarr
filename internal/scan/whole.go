@@ -100,17 +100,25 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 			}
 		}
 		// stays reports whether a download outlives the group's deletion: it is queued, or it
-		// backs a library file that no row of the group deletes.
+		// backs a library file that no row of the group deletes. The answer is the same
+		// throughout a group, so it is worked out once per download: a pack is asked about
+		// once for every file it backs.
+		stayed := map[string]bool{}
 		stays := func(id string) bool {
-			if x.queued[id] {
-				return true
+			if answer, known := stayed[id]; known {
+				return answer
 			}
-			for _, f := range x.backs[id] {
-				if !deleted[f] {
-					return true
+			answer := x.queued[id]
+			if !answer {
+				for _, f := range x.backs[id] {
+					if !deleted[f] {
+						answer = true
+						break
+					}
 				}
 			}
-			return false
+			stayed[id] = answer
+			return answer
 		}
 
 		waits := false

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/removarr/removarr/internal/domain"
 )
@@ -563,4 +564,40 @@ func TestWholeTorrentsStatesDataOutsideTheLibrary(t *testing.T) {
 			t.Fatalf("candidates = %+v, want OutsideLibrary unset", res.Candidates)
 		}
 	})
+}
+
+// One pack can back thousands of files of one row. Whether the pack stays is the same answer
+// for each of them, so it is worked out once and not once per file: with 40,000 files that
+// is 40,000 lookups instead of 1,600,000,000.
+func TestWholeTorrentsJudgesALargePackOncePerGroup(t *testing.T) {
+	const n = 40000
+	ids := make([]int, n)
+	sources := make(map[int]string, n)
+	files := make([]LibraryFile, n)
+	for i := range ids {
+		ids[i] = i + 1
+		sources[i+1] = "pack"
+		files[i] = held(i+1, i+1)
+	}
+	x := NewLinkIndex(ManagerFiles{
+		Manager: ManagerSeries,
+		Links:   link(map[string][]int{"pack": ids}, sources),
+		Files:   files,
+	})
+	series := &ListResult{Rows: []Row{seriesRow(ids, ids)}}
+	downloads := []domain.Download{dl("pack")}
+
+	done := make(chan struct{}, 1) // buffered: the goroutine can finish after a timeout
+	go func() {
+		WholeTorrents(domain.DefaultRules(), x, downloads, series)
+		done <- struct{}{}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a row backed by one pack of 40,000 files was not judged within 5 seconds")
+	}
+	if len(series.Candidates) != 1 || len(series.Candidates[0].Torrents) != 1 || series.Candidates[0].Torrents[0].ID != "pack" {
+		t.Errorf("candidates = %+v, want the one row naming the pack", series.Candidates)
+	}
 }
