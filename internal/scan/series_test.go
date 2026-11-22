@@ -203,12 +203,117 @@ func TestSeriesUnknownToTheMediaServer(t *testing.T) {
 	}
 }
 
-func TestSeriesEpisodeRange(t *testing.T) {
-	double := domain.ServerEpisode{SeriesID: "js1", Season: 1, Episode: 1, EpisodeEnd: 2, States: seen}
-	eps := []domain.ServerEpisode{double, sep(2, 1, seen)}
-	res := Series(seriesInput(twoSeasons(true), eps))
-	if len(res.Candidates) != 1 {
-		t.Errorf("got %d rows, want 1: one media server item covers episodes 1 and 2", len(res.Candidates))
+// rangeEp builds a media server item of the series "js1" that covers episodes first to last.
+func rangeEp(season, first, last int, states map[string]domain.UserState) domain.ServerEpisode {
+	e := sep(season, first, states)
+	e.EpisodeEnd = last
+	return e
+}
+
+func TestSeriesEpisodeRangeCountsOnlyWhereSonarrHoldsOneFile(t *testing.T) {
+	fav := played("2026-03-01T20:00:00Z")
+	fav.Favorite = true
+	favorite := map[string]domain.UserState{"a": fav}
+	s2 := sep(2, 1, seen)
+	tests := []struct {
+		name          string
+		series        domain.Series
+		eps           []domain.ServerEpisode
+		wantKeys      []string
+		wantUnmatched int
+		wantProtected int
+	}{
+		{
+			name:     "one file holds both episodes",
+			series:   show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(21, 2, 1, 21)),
+			eps:      []domain.ServerEpisode{rangeEp(1, 1, 2, seen), s2},
+			wantKeys: []string{"tvdb:100"},
+		},
+		{
+			name:          "two files: only the first episode is watched",
+			series:        show(true, ep(11, 1, 1, 11), ep(12, 1, 2, 12), ep(21, 2, 1, 21)),
+			eps:           []domain.ServerEpisode{rangeEp(1, 1, 2, seen), s2},
+			wantKeys:      []string{"tvdb:100:s2"},
+			wantUnmatched: 1,
+		},
+		{
+			name:          "no file for the first episode",
+			series:        show(true, ep(11, 1, 1, 0), ep(12, 1, 2, 12), ep(21, 2, 1, 21)),
+			eps:           []domain.ServerEpisode{rangeEp(1, 1, 2, seen), s2},
+			wantKeys:      []string{"tvdb:100:s2"},
+			wantUnmatched: 1,
+		},
+		{
+			name:   "range over two files and a separate item for the third episode",
+			series: show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(13, 1, 3, 13), ep(21, 2, 1, 21)),
+			eps: []domain.ServerEpisode{
+				rangeEp(1, 1, 3, seen), sep(1, 3, seen), s2,
+			},
+			wantKeys: []string{"tvdb:100"},
+		},
+		{
+			name:     "a range that does not apply leaves the other item's states",
+			series:   show(true, ep(11, 1, 1, 11), ep(12, 1, 2, 12), ep(21, 2, 1, 21)),
+			eps:      []domain.ServerEpisode{rangeEp(1, 1, 2, seen), sep(1, 2, unseen), s2},
+			wantKeys: []string{"tvdb:100:s2"},
+		},
+		{
+			name:          "favourite on a range that applies",
+			series:        show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(21, 2, 1, 21)),
+			eps:           []domain.ServerEpisode{rangeEp(1, 1, 2, favorite), s2},
+			wantProtected: 1,
+		},
+		{
+			name:          "favourite on a range that does not apply",
+			series:        show(true, ep(11, 1, 1, 11), ep(12, 1, 2, 12), ep(21, 2, 1, 21)),
+			eps:           []domain.ServerEpisode{rangeEp(1, 1, 2, favorite), s2},
+			wantUnmatched: 1,
+			wantProtected: 1,
+		},
+		{
+			name:     "absurd end",
+			series:   show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(21, 2, 1, 21)),
+			eps:      []domain.ServerEpisode{rangeEp(1, 1, 2_000_000_000, seen), s2},
+			wantKeys: []string{"tvdb:100"},
+		},
+		{
+			name:          "end 0 is a single episode",
+			series:        show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(21, 2, 1, 21)),
+			eps:           []domain.ServerEpisode{rangeEp(1, 1, 0, seen), s2},
+			wantKeys:      []string{"tvdb:100:s2"},
+			wantUnmatched: 1,
+		},
+		{
+			name:          "end before the start is a single episode",
+			series:        show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(21, 2, 1, 21)),
+			eps:           []domain.ServerEpisode{rangeEp(1, 2, 1, seen), s2},
+			wantKeys:      []string{"tvdb:100:s2"},
+			wantUnmatched: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := Series(seriesInput(tt.series, tt.eps, perSeason))
+			if got := keysOf(res.Candidates); !reflect.DeepEqual(got, tt.wantKeys) {
+				t.Errorf("rows = %v, want %v", got, tt.wantKeys)
+			}
+			if res.Unmatched != tt.wantUnmatched {
+				t.Errorf("Unmatched = %d, want %d", res.Unmatched, tt.wantUnmatched)
+			}
+			if res.Protected != tt.wantProtected {
+				t.Errorf("Protected = %d, want %d", res.Protected, tt.wantProtected)
+			}
+		})
+	}
+}
+
+func TestSeriesEpisodeRangeCostDoesNotGrowWithItsLength(t *testing.T) {
+	allocs := func(last int) float64 {
+		lib := domain.Library{Episodes: []domain.ServerEpisode{rangeEp(1, 1, last, seen)}}
+		return testing.AllocsPerRun(5, func() { indexLibrary(lib) })
+	}
+	if short, long := allocs(2), allocs(1<<20); long != short {
+		t.Errorf("indexing a range of 2^20 episodes took %v allocations, one of 2 took %v", long, short)
 	}
 }
 
