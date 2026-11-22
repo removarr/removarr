@@ -25,7 +25,7 @@ func TestTorrents(t *testing.T) {
 	l.Grabbed["unlinked"] = []int{1}
 	l.Grabbed["queued"] = []int{2}
 	l.Queue["queued"] = true
-	x := NewLinkIndex(ManagerFiles{Links: l, FileIDs: []int{10}})
+	x := NewLinkIndex(ManagerFiles{Links: l, Files: []LibraryFile{{ID: 10}}})
 
 	r := domain.DefaultRules()
 	r.ExcludedCategories = []string{"manual"}

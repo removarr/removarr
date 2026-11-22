@@ -150,7 +150,7 @@ func TestNeedsContentCheck(t *testing.T) {
 	l.Grabbed["linked"] = []int{1}
 	l.FileSource[10] = "linked"
 	l.Grabbed["replaced"] = []int{1}
-	x := NewLinkIndex(ManagerFiles{Links: l, FileIDs: []int{10}})
+	x := NewLinkIndex(ManagerFiles{Links: l, Files: []LibraryFile{{ID: 10}}})
 
 	r := domain.DefaultRules()
 	r.ExcludedCategories = []string{"games"}
@@ -216,7 +216,7 @@ func TestAContentLinkedDownloadIsNotListedAndGoesWithItsItems(t *testing.T) {
 		"pack":  sized(700 * mb),
 		"stray": sized(650 * mb),
 	})
-	x := NewLinkIndex(ManagerFiles{Links: linked, FileIDs: []int{10}})
+	x := NewLinkIndex(ManagerFiles{Links: linked, Files: []LibraryFile{{ID: 10}}})
 
 	res := Torrents(TorrentsInput{
 		Rules:     domain.DefaultRules(),

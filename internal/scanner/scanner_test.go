@@ -215,7 +215,8 @@ func TestRunWhenAMediaManagerFails(t *testing.T) {
 	st := run(t, p, withUser())
 
 	expect(t, st, domain.ListMovies, 0, "movie manager could not be read: timeout")
-	expect(t, st, domain.ListSeries, 1, "")
+	// The series list needs the movie manager too (spec 6.8, rule 5).
+	expect(t, st, domain.ListSeries, 0, "movie manager could not be read: timeout")
 	// h1 belongs to a movie. With the movie manager down it would look like an orphan.
 	expect(t, st, domain.ListTorrents, 0, "movie manager could not be read")
 }

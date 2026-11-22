@@ -52,15 +52,15 @@ func seriesInput(s domain.Series, eps []domain.ServerEpisode, mods ...func(*Seri
 	for _, m := range mods {
 		m(&in)
 	}
-	var fileIDs []int
+	var files []LibraryFile
 	for _, sr := range in.Snapshot.Series {
 		for _, e := range sr.Episodes {
 			if e.File != nil {
-				fileIDs = append(fileIDs, e.File.ID)
+				files = append(files, LibraryFile{ID: e.File.ID})
 			}
 		}
 	}
-	in.Index = NewLinkIndex(ManagerFiles{Links: in.Snapshot.Links, FileIDs: fileIDs})
+	in.Index = NewLinkIndex(ManagerFiles{Links: in.Snapshot.Links, Files: files})
 	return in
 }
 

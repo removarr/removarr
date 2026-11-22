@@ -35,13 +35,13 @@ func movieInput(mods ...func(*MoviesInput)) MoviesInput {
 	for _, m := range mods {
 		m(&in)
 	}
-	var fileIDs []int
+	var files []LibraryFile
 	for _, m := range in.Snapshot.Movies {
 		if m.File != nil {
-			fileIDs = append(fileIDs, m.File.ID)
+			files = append(files, LibraryFile{ID: m.File.ID})
 		}
 	}
-	in.Index = NewLinkIndex(ManagerFiles{Links: in.Snapshot.Links, FileIDs: fileIDs})
+	in.Index = NewLinkIndex(ManagerFiles{Links: in.Snapshot.Links, Files: files})
 	return in
 }
 
