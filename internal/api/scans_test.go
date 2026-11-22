@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -118,6 +120,73 @@ func TestCandidates(t *testing.T) {
 		if rec := h.do(http.MethodGet, path, ""); rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: status = %d, want 400", path, rec.Code)
 		}
+	}
+}
+
+// racingStore lets a scan finish right after every read, the way a scan that ends while a
+// request is being answered would.
+type racingStore struct {
+	*store.Store
+	afterRead func()
+}
+
+func (r *racingStore) LatestScan(ctx context.Context) (*store.ScanRecord, error) {
+	rec, err := r.Store.LatestScan(ctx)
+	r.afterRead()
+	return rec, err
+}
+
+func (r *racingStore) LatestList(ctx context.Context, list domain.ListKind) (*store.ScanRecord, []domain.Candidate, error) {
+	rec, rows, err := r.Store.LatestList(ctx, list)
+	r.afterRead()
+	return rec, rows, err
+}
+
+// Finishing a scan drops the rows of the scan before it. A request that read the older
+// scan and then its rows used to answer with the older time and no rows.
+func TestCandidatesBelongToTheScanTheyAreReportedFor(t *testing.T) {
+	h := newHarness(t, nil)
+	storeScan(t, h) // finished at 12:01 with the row tmdb:603
+
+	second := time.Date(2026, 3, 10, 13, 0, 0, 0, time.UTC)
+	finished := false
+	racing := &racingStore{Store: h.store}
+	racing.afterRead = func() {
+		if finished {
+			return
+		}
+		finished = true
+		ctx := context.Background()
+		id, err := h.store.BeginScan(ctx, second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		summary := domain.ScanSummary{Lists: map[domain.ListKind]domain.ListSummary{domain.ListMovies: {Candidates: 1}}}
+		rows := []domain.Candidate{{List: domain.ListMovies, Key: "tmdb:604", Title: "The Matrix Reloaded", Torrents: []domain.TorrentInfo{}}}
+		if err := h.store.FinishScan(ctx, id, second.Add(time.Minute), summary, rows); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.handler = (&Server{
+		Config: h.config, Store: racing, Scanner: h.scanner, Apps: h.apps,
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}).Handler()
+
+	type body struct {
+		ScannedAt  *time.Time         `json:"scannedAt"`
+		Candidates []domain.Candidate `json:"candidates"`
+	}
+	got := decode[body](t, h.do(http.MethodGet, "/api/candidates?list=movies", ""))
+
+	if got.ScannedAt == nil || len(got.Candidates) != 1 {
+		t.Fatalf("answer = %+v; want one scan time and its one row", got)
+	}
+	wantKey := map[time.Time]string{
+		time.Date(2026, 3, 10, 12, 1, 0, 0, time.UTC): "tmdb:603",
+		second.Add(time.Minute):                       "tmdb:604",
+	}[got.ScannedAt.UTC()]
+	if got.Candidates[0].Key != wantKey {
+		t.Errorf("scan of %v answered with row %s, want %s", got.ScannedAt, got.Candidates[0].Key, wantKey)
 	}
 }
 

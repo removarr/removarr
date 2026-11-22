@@ -57,19 +57,18 @@ func (s *Server) candidates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := candidatesResponse{List: list, Candidates: []domain.Candidate{}}
-	last, err := s.Store.LatestScan(r.Context())
+	// The scan and its rows are read together: a scan that finishes meanwhile drops the
+	// rows of the scan before it.
+	last, rows, err := s.Store.LatestList(r.Context(), list)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	resp := candidatesResponse{List: list, Candidates: []domain.Candidate{}}
 	if last != nil {
 		resp.ScannedAt = last.FinishedAt
 		resp.Error = last.Summary.Lists[list].Error
-		if resp.Candidates, err = s.Store.Candidates(r.Context(), last.ID, list); err != nil {
-			s.fail(w, err)
-			return
-		}
+		resp.Candidates = rows
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

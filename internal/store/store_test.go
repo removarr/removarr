@@ -150,6 +150,69 @@ func TestScanLifecycle(t *testing.T) {
 	}
 }
 
+func TestLatestListReturnsAScanWithItsOwnRows(t *testing.T) {
+	s := open(t)
+	rec, rows, err := s.LatestList(ctx, domain.ListMovies)
+	if rec != nil || rows == nil || len(rows) != 0 || err != nil {
+		t.Fatalf("LatestList on an empty store = %v, %v, %v; want no scan and an empty, non-nil slice", rec, rows, err)
+	}
+
+	// Every scan stores one movie row keyed by the scan's number, and one torrent row.
+	finish := func(n int) int64 {
+		t.Helper()
+		started := time.Date(2026, 3, 10, 12, n, 0, 0, time.UTC)
+		id, err := s.BeginScan(ctx, started)
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidates := []domain.Candidate{
+			{List: domain.ListMovies, Key: "tmdb:" + string(rune('0'+n)), Torrents: []domain.TorrentInfo{}},
+			{List: domain.ListTorrents, Key: "hash:abc", Torrents: []domain.TorrentInfo{{ID: "abc"}}},
+		}
+		if err := s.FinishScan(ctx, id, started.Add(time.Second), domain.ScanSummary{}, candidates); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+
+	finish(1)
+	second := finish(2)
+	if _, err := s.BeginScan(ctx, time.Date(2026, 3, 10, 13, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err) // a scan that is still running is not the latest scan
+	}
+
+	rec, rows, err = s.LatestList(ctx, domain.ListMovies)
+	if err != nil || rec == nil || rec.ID != second {
+		t.Fatalf("LatestList = %+v, %v; want scan %d", rec, err, second)
+	}
+	if len(rows) != 1 || rows[0].Key != "tmdb:2" {
+		t.Errorf("rows = %+v, want only the second scan's movie row", rows)
+	}
+	if _, rows, _ := s.LatestList(ctx, domain.ListSeries); rows == nil || len(rows) != 0 {
+		t.Errorf("series rows = %v, want an empty, non-nil slice", rows)
+	}
+}
+
+// With one connection, a read transaction must give it back, or the next write waits forever.
+func TestLatestListReleasesTheDatabase(t *testing.T) {
+	s := open(t)
+	for i := 0; i < 3; i++ {
+		if _, _, err := s.LatestList(ctx, domain.ListMovies); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := make(chan error, 1)
+	go func() { _, err := s.BeginScan(ctx, time.Now()); done <- err }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a write after LatestList did not get the database")
+	}
+}
+
 func TestANewScanReplacesTheOldCandidates(t *testing.T) {
 	s := open(t)
 	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)

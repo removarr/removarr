@@ -82,15 +82,50 @@ func (s *Store) FinishScan(ctx context.Context, id int64, finishedAt time.Time, 
 	return tx.Commit()
 }
 
+// queryer is what a read needs: the database itself, or a transaction on it.
+type queryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
 // LatestScan returns the most recent finished scan, or nil when there is none.
 func (s *Store) LatestScan(ctx context.Context) (*ScanRecord, error) {
+	return latestScan(ctx, s.db)
+}
+
+// LatestList returns the most recent finished scan together with its rows of one list. Both
+// are read in one transaction: FinishScan drops the rows of earlier scans, so a scan that
+// finished between two separate reads would leave the older scan with no rows. The scan is
+// nil when there is none.
+func (s *Store) LatestList(ctx context.Context, list domain.ListKind) (*ScanRecord, []domain.Candidate, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback() // nothing was written
+
+	rec, err := latestScan(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if rec == nil {
+		return nil, []domain.Candidate{}, nil
+	}
+	rows, err := candidates(ctx, tx, rec.ID, list)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rec, rows, nil
+}
+
+func latestScan(ctx context.Context, q queryer) (*ScanRecord, error) {
 	var (
 		rec      ScanRecord
 		started  string
 		finished sql.NullString
 		summary  string
 	)
-	err := s.db.QueryRowContext(ctx,
+	err := q.QueryRowContext(ctx,
 		`SELECT id, started_at, finished_at, status, summary FROM scans WHERE status = ? ORDER BY id DESC LIMIT 1`, ScanDone).
 		Scan(&rec.ID, &started, &finished, &rec.Status, &summary)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -117,7 +152,11 @@ func (s *Store) LatestScan(ctx context.Context) (*ScanRecord, error) {
 
 // Candidates returns the rows of one list of one scan, sorted by key.
 func (s *Store) Candidates(ctx context.Context, scanID int64, list domain.ListKind) ([]domain.Candidate, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT data FROM candidates WHERE scan_id = ? AND list = ? ORDER BY key`, scanID, string(list))
+	return candidates(ctx, s.db, scanID, list)
+}
+
+func candidates(ctx context.Context, q queryer, scanID int64, list domain.ListKind) ([]domain.Candidate, error) {
+	rows, err := q.QueryContext(ctx, `SELECT data FROM candidates WHERE scan_id = ? AND list = ? ORDER BY key`, scanID, string(list))
 	if err != nil {
 		return nil, err
 	}
