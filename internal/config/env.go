@@ -115,6 +115,7 @@ func NormalizeURL(raw string) (string, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || strings.HasPrefix(u.Path, "//") {
 		return "", errors.New("not an http or https URL")
 	}
-	u.RawQuery, u.Fragment = "", ""
+	// ForceQuery is set for a URL that ends in a bare "?", which would otherwise survive.
+	u.RawQuery, u.ForceQuery, u.Fragment = "", false, ""
 	return strings.TrimRight(u.String(), "/"), nil
 }

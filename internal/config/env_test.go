@@ -80,6 +80,12 @@ func TestNormalizeURL(t *testing.T) {
 		"http://pi:8989/sonarr/":         "http://pi:8989/sonarr",
 		"  https://media.example/jf  ":   "https://media.example/jf",
 		"http://pi:8989/sonarr?x=1#frag": "http://pi:8989/sonarr",
+		// A bare "?" or "#" must not survive: the clients append their paths to this URL.
+		"http://pi:8989?":        "http://pi:8989",
+		"http://pi:8989/?":       "http://pi:8989",
+		"http://pi:8989/sonarr?": "http://pi:8989/sonarr",
+		"http://pi:8989#":        "http://pi:8989",
+		"http://pi:8989/?#":      "http://pi:8989",
 	}
 	for in, want := range good {
 		got, err := NormalizeURL(in)
