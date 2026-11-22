@@ -4,7 +4,8 @@
 # Usage: scripts/wait-for-copilot.sh <pull request> [minutes to wait, default 30]
 #
 # Looks every two minutes (INTERVAL=<seconds> changes that) and ends with status
-#   0  Copilot reviewed after it was last asked; the open review threads are printed
+#   0  Copilot reviewed after it was last asked; the summary of the review and the open
+#      review threads are printed
 #   2  Copilot was not asked, or the request was withdrawn
 #   3  no review arrived in the time given
 #   4  the pull request is merged or closed
@@ -51,7 +52,9 @@ while :; do
       echo "pull request $PR is no longer open"
       exit 4
     fi
-    log=$(printf '%s\n' "$log" | sort)
+    # Sort by time only and keep the timeline's order within one second: a request and
+    # its withdrawal can share a time, and the later one has to stay the later one.
+    log=$(printf '%s\n' "$log" | sort -s -k1,1)
     asked=$(printf '%s\n' "$log" | awk '$2 == "review_requested" || $2 == "review_request_removed" { last = $0 } END { print last }')
     reviewed=$(printf '%s\n' "$log" | awk '$2 == "reviewed" { last = $1 } END { print last }')
     case "$asked" in
