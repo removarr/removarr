@@ -196,7 +196,7 @@ func TestAContentLinkedDownloadIsNotListedAndGoesWithItsItems(t *testing.T) {
 		"pack":  sized(700 * mb),
 		"stray": sized(650 * mb),
 	})
-	x := NewLinkIndex(ManagerFiles{Links: linked, Files: []LibraryFile{{ID: 10}}})
+	x := NewLinkIndex(ManagerFiles{Manager: ManagerMovies, Links: linked, Files: []LibraryFile{{ID: 10}}})
 
 	res := Torrents(TorrentsInput{
 		Rules:     domain.DefaultRules(),
@@ -207,10 +207,24 @@ func TestAContentLinkedDownloadIsNotListedAndGoesWithItsItems(t *testing.T) {
 		t.Errorf("listed %+v, want only the stray torrent, as an orphan", res.Candidates)
 	}
 
-	if got := x.Removable(linked, []int{1}, []int{10}); !reflect.DeepEqual(got, []string{"pack"}) {
-		t.Errorf("deleting the movie and its file removes %v, want [pack]", got)
-	}
-	if got := x.Removable(linked, []int{1}, nil); got != nil {
-		t.Errorf("while the file stays, a deletion removes %v, want nothing", got)
+	for _, tt := range []struct {
+		name  string
+		files []int
+		want  []string
+	}{
+		{"deleting the movie and its file", []int{10}, []string{"pack"}},
+		{"a deletion that leaves the file", nil, nil},
+	} {
+		res := ListResult{Rows: []Row{{
+			Candidate: domain.Candidate{List: domain.ListMovies, Key: "tmdb:1"},
+			Manager:   ManagerMovies, ItemIDs: []int{1}, FileIDs: tt.files,
+		}}}
+		WholeTorrents(domain.DefaultRules(), x, []domain.Download{dl("pack"), dl("stray")}, &res)
+		if len(res.Candidates) != 1 {
+			t.Fatalf("%s: listed %d rows, want 1", tt.name, len(res.Candidates))
+		}
+		if got := torrentIDs(res.Candidates[0]); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s removes %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }

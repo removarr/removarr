@@ -9,14 +9,12 @@ import (
 
 // SeriesInput is everything the watched series list is computed from.
 type SeriesInput struct {
-	Rules     domain.Rules
-	Now       time.Time
-	Users     []domain.User
-	Library   domain.Library
-	Snapshot  domain.SeriesSnapshot
-	Downloads []domain.Download
-	Index     *LinkIndex
-	Ignored   map[string]bool // candidate keys the user has ignored
+	Rules    domain.Rules
+	Now      time.Time
+	Users    []domain.User
+	Library  domain.Library
+	Snapshot domain.SeriesSnapshot
+	Ignored  map[string]bool // candidate keys the user has ignored
 }
 
 type epKey struct{ season, number int }
@@ -36,11 +34,12 @@ func (a *seasonAgg) qualifies(r domain.Rules, now time.Time) bool {
 	return len(a.itemIDs) > 0 && a.watched == len(a.itemIDs) && GraceOK(r, a.at, now)
 }
 
-// Series returns the watched series list (spec 6.2 to 6.4), sorted by key.
+// Series returns the qualifying series and seasons of the watched series list (spec 6.2 to
+// 6.4) as Rows, sorted by key. Candidates stays empty: WholeTorrents fills it.
 func Series(in SeriesInput) ListResult {
 	var res ListResult
 	lib := indexLibrary(in.Library)
-	b := rowBuilder{in: in, names: userNames(in.Users), downloads: downloadsByID(in.Downloads)}
+	b := rowBuilder{in: in, names: userNames(in.Users)}
 
 	for _, s := range in.Snapshot.Series {
 		if s.IDs.TVDB == "" {
@@ -99,7 +98,7 @@ func Series(in SeriesInput) ListResult {
 		all := len(qualifying) == len(regular)
 		perSeason := in.Rules.SeriesUnit == domain.UnitSeason
 
-		var rows []domain.Candidate
+		var rows []Row
 		switch {
 		case all && !(perSeason && anySeasonIgnored(in.Ignored, s, regular)):
 			rows = append(rows, b.seriesRow(s, regular, seasons))
@@ -115,9 +114,9 @@ func Series(in SeriesInput) ListResult {
 			res.Protected++
 			continue
 		}
-		res.Candidates = append(res.Candidates, rows...)
+		res.Rows = append(res.Rows, rows...)
 	}
-	sortByKey(res.Candidates)
+	sortRows(res.Rows)
 	return res
 }
 
@@ -155,14 +154,13 @@ func anySeasonIgnored(ignored map[string]bool, s domain.Series, regular []*seaso
 
 // rowBuilder turns seasons into rows.
 type rowBuilder struct {
-	in        SeriesInput
-	names     map[string]string
-	downloads map[string]domain.Download
+	in    SeriesInput
+	names map[string]string
 }
 
 // seriesRow builds a whole-series row. regular are the regular seasons with files, all of
 // which qualify; seasons also holds the specials.
-func (b rowBuilder) seriesRow(s domain.Series, regular []*seasonAgg, seasons map[int]*seasonAgg) domain.Candidate {
+func (b rowBuilder) seriesRow(s domain.Series, regular []*seasonAgg, seasons map[int]*seasonAgg) Row {
 	deleted := regular
 	var itemIDs []int
 	if s.Ended {
@@ -180,27 +178,27 @@ func (b rowBuilder) seriesRow(s domain.Series, regular []*seasonAgg, seasons map
 			itemIDs = append(itemIDs, a.itemIDs...)
 		}
 	}
-	c := b.row(s, regular, deleted, itemIDs)
-	c.Key = domain.SeriesKey(s.IDs.TVDB)
-	c.Scope = domain.ScopeSeries
-	c.StillAiring = !s.Ended
-	return c
+	row := b.row(s, regular, deleted, itemIDs)
+	row.Candidate.Key = domain.SeriesKey(s.IDs.TVDB)
+	row.Candidate.Scope = domain.ScopeSeries
+	row.Candidate.StillAiring = !s.Ended
+	return row
 }
 
 // seasonRow builds the row of one qualifying season.
-func (b rowBuilder) seasonRow(s domain.Series, a *seasonAgg) domain.Candidate {
+func (b rowBuilder) seasonRow(s domain.Series, a *seasonAgg) Row {
 	one := []*seasonAgg{a}
-	c := b.row(s, one, one, a.itemIDs)
-	c.Key = domain.SeasonKey(s.IDs.TVDB, a.number)
-	c.Scope = domain.ScopeSeason
-	c.Season = a.number
-	return c
+	row := b.row(s, one, one, a.itemIDs)
+	row.Candidate.Key = domain.SeasonKey(s.IDs.TVDB, a.number)
+	row.Candidate.Scope = domain.ScopeSeason
+	row.Candidate.Season = a.number
+	return row
 }
 
 // row builds what series and season rows share. watchedOver are the seasons the watched date
 // and watchers come from; deleted are the seasons whose files Delete would remove; itemIDs
 // are the episodes Delete affects.
-func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, itemIDs []int) domain.Candidate {
+func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, itemIDs []int) Row {
 	var size int64
 	var fileIDs []int
 	for _, a := range deleted {
@@ -228,17 +226,18 @@ func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, item
 		}
 	}
 
-	removable := b.in.Index.Removable(b.in.Snapshot.Links, itemIDs, fileIDs)
-	torrents, below := torrentInfos(b.in.Rules, b.downloads, removable)
-	return domain.Candidate{
-		List:         domain.ListSeries,
-		Title:        s.Title,
-		Year:         s.Year,
-		Size:         size,
-		WatchedBy:    namesOf(b.names, by),
-		WatchedAt:    at,
-		Torrents:     torrents,
-		BelowSeedMin: below,
+	return Row{
+		Candidate: domain.Candidate{
+			List:      domain.ListSeries,
+			Title:     s.Title,
+			Year:      s.Year,
+			Size:      size,
+			WatchedBy: namesOf(b.names, by),
+			WatchedAt: at,
+		},
+		Manager: ManagerSeries,
+		ItemIDs: itemIDs,
+		FileIDs: fileIDs,
 	}
 }
 

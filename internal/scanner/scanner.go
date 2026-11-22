@@ -311,13 +311,16 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 	}
 	index := scan.NewLinkIndex(linkData(&f, f.Files)...)
 
-	add := func(list domain.ListKind, problem string, compute func() scan.ListResult) {
+	// add writes a list's summary and appends its candidates. res is nil when the list
+	// cannot be produced.
+	add := func(list domain.ListKind, problem string, res *scan.ListResult) {
 		if problem != "" {
 			summary.Lists[list] = domain.ListSummary{Error: problem}
 			return
 		}
-		res := compute()
-		summary.Lists[list] = domain.ListSummary{Candidates: len(res.Candidates), Protected: res.Protected, Unmatched: res.Unmatched}
+		summary.Lists[list] = domain.ListSummary{
+			Candidates: len(res.Candidates), Protected: res.Protected, Unmatched: res.Unmatched, Waiting: res.Waiting,
+		}
 		candidates = append(candidates, res.Candidates...)
 	}
 
@@ -332,21 +335,36 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 		return first(own, other, f.Downloads.problem(roleDownloads), f.Library.problem(roleMediaServer), noUsers)
 	}
 
-	add(domain.ListMovies, watchedProblem(f.Movies.problem(roleMovies), failure(f.Series.Configured, f.Series.Err, roleSeries)), func() scan.ListResult {
-		return scan.Movies(scan.MoviesInput{
-			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value,
-			Snapshot: f.Movies.Value, Downloads: f.Downloads.Value, Index: index,
+	moviesProblem := watchedProblem(f.Movies.problem(roleMovies), failure(f.Series.Configured, f.Series.Err, roleSeries))
+	seriesProblem := watchedProblem(f.Series.problem(roleSeries), failure(f.Movies.Configured, f.Movies.Err, roleMovies))
+	// The rows of both watched lists go through the whole-torrent rule together: a torrent
+	// can back a movie file and an episode file (spec 6.3).
+	var movies, series *scan.ListResult
+	var watched []*scan.ListResult
+	if moviesProblem == "" {
+		res := scan.Movies(scan.MoviesInput{
+			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value, Snapshot: f.Movies.Value,
 		})
-	})
-	add(domain.ListSeries, watchedProblem(f.Series.problem(roleSeries), failure(f.Movies.Configured, f.Movies.Err, roleMovies)), func() scan.ListResult {
-		return scan.Series(scan.SeriesInput{
-			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value,
-			Snapshot: f.Series.Value, Downloads: f.Downloads.Value, Index: index,
+		movies = &res
+		watched = append(watched, movies)
+	}
+	if seriesProblem == "" {
+		res := scan.Series(scan.SeriesInput{
+			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value, Snapshot: f.Series.Value,
 		})
-	})
-	add(domain.ListTorrents, torrentsProblem(f), func() scan.ListResult {
-		return scan.Torrents(scan.TorrentsInput{Rules: rules, Downloads: f.Downloads.Value, Index: index})
-	})
+		series = &res
+		watched = append(watched, series)
+	}
+	scan.WholeTorrents(rules, index, f.Downloads.Value, watched...)
+
+	add(domain.ListMovies, moviesProblem, movies)
+	add(domain.ListSeries, seriesProblem, series)
+	torrents := scan.ListResult{}
+	problem := torrentsProblem(f)
+	if problem == "" {
+		torrents = scan.Torrents(scan.TorrentsInput{Rules: rules, Downloads: f.Downloads.Value, Index: index})
+	}
+	add(domain.ListTorrents, problem, &torrents)
 	return summary, candidates
 }
 

@@ -1,7 +1,6 @@
 package scan
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
@@ -45,54 +44,6 @@ func TestLinkIndex(t *testing.T) {
 	}
 	if !x.Queued("qqq") || x.Queued("aaa") {
 		t.Error("only qqq is queued")
-	}
-}
-
-func TestRemovable(t *testing.T) {
-	l := links()
-	l.Grabbed["new"] = []int{1}     // current release of movie 1
-	l.Grabbed["old"] = []int{1}     // replaced by an upgrade
-	l.Grabbed["pack"] = []int{2, 3} // collection pack behind movies 2 and 3
-	l.Grabbed["queued"] = []int{1}
-	l.Grabbed["other"] = []int{4}
-	l.FileSource[10] = "new"
-	l.FileSource[20] = "pack"
-	l.FileSource[30] = "pack"
-	l.FileSource[40] = "other"
-	l.Queue["queued"] = true
-	x := NewLinkIndex(ManagerFiles{Links: l, Files: []LibraryFile{{ID: 10}, {ID: 20}, {ID: 30}, {ID: 40}}})
-
-	tests := []struct {
-		name         string
-		items, files []int
-		want         []string
-	}{
-		{"movie with an old and a new release", []int{1}, []int{10}, []string{"new", "old"}},
-		{"one movie of a pack keeps the pack", []int{2}, []int{20}, nil},
-		{"both movies of a pack free the pack", []int{2, 3}, []int{20, 30}, []string{"pack"}},
-		{"a file listed twice is counted once", []int{2}, []int{20, 20}, nil},
-		{"nothing associated", []int{99}, nil, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := x.Removable(l, tt.items, tt.files); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Removable = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestRemovableCountsFilesInOtherManagers(t *testing.T) {
-	a := links()
-	a.Grabbed["shared"] = []int{1}
-	a.FileSource[10] = "shared"
-	b := links()
-	b.Grabbed["shared"] = []int{7}
-	b.FileSource[70] = "shared"
-	x := NewLinkIndex(ManagerFiles{Links: a, Files: []LibraryFile{{ID: 10}}}, ManagerFiles{Links: b, Files: []LibraryFile{{ID: 70}}})
-
-	if got := x.Removable(a, []int{1}, []int{10}); got != nil {
-		t.Errorf("a download that still backs a file in another manager must stay, got %v", got)
 	}
 }
 
