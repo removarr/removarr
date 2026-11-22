@@ -408,6 +408,30 @@ func TestWholeFiles(t *testing.T) {
 			waitingMovies: 1,
 			waitingSeries: 1,
 		},
+		{
+			name:          "5. a file whose source is not in the client still holds the row back",
+			series:        ManagerFiles{Links: link(nil, map[int]string{30: "gone"}), Files: []LibraryFile{held(30, 1, 2)}},
+			seriesRows:    []Row{seasonRow(2, []int{2}, []int{30})},
+			waitingSeries: 1,
+		},
+		{
+			name:       "6a. rows joined by a shared file and by a torrent are all tied",
+			series:     ManagerFiles{Links: link(nil, map[int]string{40: "x", 50: "x"}), Files: []LibraryFile{held(30, 1, 2), held(40, 3), held(50, 4)}},
+			downloads:  []string{"x"},
+			seriesRows: []Row{seasonRow(1, []int{1}, []int{30}), seasonRow(2, []int{2, 3}, []int{30, 40}), seasonRow(3, []int{4}, []int{50})},
+			wantSeries: []listedRow{
+				{key: "tvdb:100:s1", tied: []string{"series/tvdb:100:s2", "series/tvdb:100:s3"}},
+				{key: "tvdb:100:s2", torrents: []string{"x"}, tied: []string{"series/tvdb:100:s1", "series/tvdb:100:s3"}},
+				{key: "tvdb:100:s3", torrents: []string{"x"}, tied: []string{"series/tvdb:100:s1", "series/tvdb:100:s2"}},
+			},
+		},
+		{
+			name:          "6b. the same, with an episode that no row deletes in the last file: all three wait",
+			series:        ManagerFiles{Links: link(nil, map[int]string{40: "x", 50: "x"}), Files: []LibraryFile{held(30, 1, 2), held(40, 3), held(50, 4, 5)}},
+			downloads:     []string{"x"},
+			seriesRows:    []Row{seasonRow(1, []int{1}, []int{30}), seasonRow(2, []int{2, 3}, []int{30, 40}), seasonRow(3, []int{4}, []int{50})},
+			waitingSeries: 3,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { runWhole(t, tt) })
