@@ -52,4 +52,4 @@ removarr answers when it is reached by an IP address or as `localhost`. To reach
 
     REMOVARR_ALLOWED_HOSTS=pi.local,removarr.lan
 
-List names only, without `http://` and without a port. The same applies to the name a reverse proxy passes on. A request under any other name gets a 403. This stops a website from pointing its own domain name at removarr's address and then reading and changing everything through your browser.
+List names only, without `http://` and without a port. The same applies to the name a reverse proxy passes on. A request under any other name gets a 403, except the health check at `/api/health`. This stops a website from pointing its own domain name at removarr's address and then reading and changing everything through your browser.

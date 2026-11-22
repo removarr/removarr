@@ -9,8 +9,10 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -80,13 +82,19 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 // Every request must name this server by an IP address, by localhost or by a host name the
 // owner listed. Without that check a page on another site could point its own name at
 // removarr's address (DNS rebinding): the browser would treat removarr as that site, let
-// the page read every answer and send any header, and Host and Origin would agree.
+// the page read every answer and send any header, and Host and Origin would agree. The
+// health check is exempt: it tells nothing about the library, and a monitor may reach it by
+// a container or service name.
 //
 // A request that changes something must also be one that only removarr's own UI or a
 // deliberate API client sends: it carries RequestHeader, is JSON, and, when it names an
 // origin, comes from this server's own address.
 func guard(next http.Handler, allowedHosts []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/api/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if !hostAllowed(r.Host, allowedHosts) {
 			writeError(w, http.StatusForbidden,
 				"this server does not answer to the host name in the request; reach it by its IP address, or list the name in REMOVARR_ALLOWED_HOSTS")
@@ -117,20 +125,28 @@ func guard(next http.Handler, allowedHosts []string) http.Handler {
 }
 
 // hostAllowed reports whether a Host header names this server in a way another site cannot
-// imitate: an IP address, localhost, or one of the listed names. The port is ignored.
+// imitate: an IP address, localhost, or one of the listed names. The port is ignored, but
+// the header must be well formed: brackets hold an IPv6 address and nothing else, and a
+// port is a number.
 func hostAllowed(host string, allowed []string) bool {
 	name := host
-	if h, _, err := net.SplitHostPort(host); err == nil {
+	if h, port, err := net.SplitHostPort(host); err == nil {
+		if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+			return false
+		}
 		name = h
+	} else if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		name = host[1 : len(host)-1]
 	}
-	name = strings.TrimSuffix(strings.ToLower(strings.Trim(name, "[]")), ".")
-	if name == "" {
-		return false
+	addr, err := netip.ParseAddr(name) // accepts an IPv6 zone, unlike net.ParseIP
+	if strings.ContainsAny(host, "[]") {
+		return err == nil && addr.Is6() && strings.HasPrefix(host, "[")
 	}
-	if name == "localhost" || net.ParseIP(name) != nil {
+	if err == nil {
 		return true
 	}
-	return slices.Contains(allowed, name)
+	name = strings.TrimSuffix(strings.ToLower(name), ".")
+	return name == "localhost" || (name != "" && slices.Contains(allowed, name))
 }
 
 // errorBody is the JSON body of every error response.

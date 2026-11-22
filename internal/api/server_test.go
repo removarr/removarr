@@ -190,6 +190,7 @@ func TestGuardComparesTheOriginWithoutRegardToCase(t *testing.T) {
 // The server answers only when the Host header is an IP address, localhost or a name the
 // owner listed, for reads and for changes alike.
 func TestGuardChecksTheHostHeader(t *testing.T) {
+	h := newHarness(t, nil) // the requests change nothing, so one server serves every case
 	tests := []struct {
 		host string
 		want int
@@ -198,6 +199,7 @@ func TestGuardChecksTheHostHeader(t *testing.T) {
 		{"192.168.1.10", http.StatusOK},
 		{"[::1]:7272", http.StatusOK},
 		{"[fe80::1]", http.StatusOK},
+		{"[fe80::1%25en0]:7272", http.StatusOK}, // an IPv6 address with a zone is still an address
 		{"localhost:7272", http.StatusOK},
 		{"LOCALHOST", http.StatusOK},
 		{"localhost.:7272", http.StatusOK},
@@ -211,16 +213,43 @@ func TestGuardChecksTheHostHeader(t *testing.T) {
 		{"removarr.local.evil.example", http.StatusForbidden},
 		{"other.local:7272", http.StatusForbidden},
 		{"", http.StatusForbidden},
+		// Numbers that are not written as an IP address are names.
+		{"127.1", http.StatusForbidden},
+		{"2130706433", http.StatusForbidden},
+		{"0x7f000001", http.StatusForbidden},
+		// Brackets hold an IPv6 address and nothing else, and a port is a number.
+		{"[localhost]", http.StatusForbidden},
+		{"]localhost[", http.StatusForbidden},
+		{"[removarr.local]:7272", http.StatusForbidden},
+		{"[1.2.3.4]:80", http.StatusForbidden},
+		{"[::1", http.StatusForbidden},
+		{"::1]", http.StatusForbidden},
+		{"removarr.local:abc", http.StatusForbidden},
+		{"localhost:", http.StatusForbidden},
 	}
 	for _, tt := range tests {
 		for _, method := range []string{http.MethodGet, http.MethodPut} {
 			t.Run(method+" as "+tt.host, func(t *testing.T) {
-				rec := newHarness(t, nil).do(method, "/api/settings", `{}`, func(r *http.Request) { r.Host = tt.host })
+				rec := h.do(method, "/api/settings", `{}`, func(r *http.Request) { r.Host = tt.host })
 				if rec.Code != tt.want {
 					t.Errorf("status = %d, want %d: %s", rec.Code, tt.want, rec.Body)
 				}
 			})
 		}
+	}
+}
+
+// A monitor may reach the health check by a container or service name. It tells nothing
+// about the library, so it answers under any name.
+func TestHealthAnswersUnderAnyName(t *testing.T) {
+	h := newHarness(t, nil)
+	rec := h.do(http.MethodGet, "/api/health", "", func(r *http.Request) { r.Host = "removarr:7272" })
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	rec = h.do(http.MethodGet, "/api/health/", "", func(r *http.Request) { r.Host = "removarr:7272" })
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("another path under an unlisted name: status = %d, want 403", rec.Code)
 	}
 }
 

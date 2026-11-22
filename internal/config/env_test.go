@@ -21,11 +21,11 @@ func TestLoadEnvDefaults(t *testing.T) {
 }
 
 func TestLoadEnvReadsTheAllowedHosts(t *testing.T) {
-	e, err := LoadEnv(env(map[string]string{"REMOVARR_ALLOWED_HOSTS": " Removarr.Lan , pi.local.,,dietpi "}))
+	e, err := LoadEnv(env(map[string]string{"REMOVARR_ALLOWED_HOSTS": " Removarr.Lan , pi.local.,,dietpi , my_removarr-2 "}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"removarr.lan", "pi.local", "dietpi"}
+	want := []string{"removarr.lan", "pi.local", "dietpi", "my_removarr-2"}
 	if !reflect.DeepEqual(e.AllowedHosts, want) {
 		t.Errorf("AllowedHosts = %q, want %q: lower case, no trailing dot, empty entries skipped", e.AllowedHosts, want)
 	}
@@ -34,7 +34,10 @@ func TestLoadEnvReadsTheAllowedHosts(t *testing.T) {
 // The list holds bare host names. A scheme, a port or a path would never match a Host
 // header's name, so the mistake is reported at start instead of as a puzzling 403.
 func TestLoadEnvRejectsAllowedHostsThatAreNotHostNames(t *testing.T) {
-	for _, value := range []string{"http://removarr.lan", "removarr.lan:7272", "removarr.lan/ui", "removarr lan", "pi.local,http://x"} {
+	for _, value := range []string{
+		"http://removarr.lan", "removarr.lan:7272", "removarr.lan/ui", "removarr lan", "pi.local,http://x",
+		"[::1]", "*.lan", "pi%2elocal", "bücher.example",
+	} {
 		_, err := LoadEnv(env(map[string]string{"REMOVARR_ALLOWED_HOSTS": value}))
 		if err == nil || !strings.Contains(err.Error(), "REMOVARR_ALLOWED_HOSTS") {
 			t.Errorf("REMOVARR_ALLOWED_HOSTS=%q: err = %v, want an error naming the variable", value, err)

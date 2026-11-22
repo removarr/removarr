@@ -90,8 +90,8 @@ func LoadEnv(getenv func(string) string) (Env, error) {
 		if name == "" {
 			continue
 		}
-		if strings.ContainsAny(name, "/: \t") {
-			return Env{}, fmt.Errorf("REMOVARR_ALLOWED_HOSTS: %q is not a host name; list names without scheme, port or path", name)
+		if !isHostName(name) {
+			return Env{}, fmt.Errorf("REMOVARR_ALLOWED_HOSTS: %q is not a host name; list names without scheme, port or path, written with letters, digits, dots and hyphens", name)
 		}
 		env.AllowedHosts = append(env.AllowedHosts, name)
 	}
@@ -113,6 +113,20 @@ func LoadEnv(getenv func(string) string) (Env, error) {
 		env.Conn[f.Key] = v
 	}
 	return env, nil
+}
+
+// isHostName reports whether s could appear as the name in a Host header: lower-case
+// letters, digits, dots, hyphens and underscores. A browser sends any other name in its
+// encoded form, so another spelling would never match.
+func isHostName(s string) bool {
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '.', c == '-', c == '_':
+		default:
+			return false
+		}
+	}
+	return s != ""
 }
 
 // NormalizeURL validates an app's base URL and removes trailing slashes, the query and the
