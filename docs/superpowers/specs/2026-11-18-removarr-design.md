@@ -589,3 +589,11 @@ On 2026-11-19 the owner stated the two principles of section 2 and asked for the
 - The shapes the rule exists for do occur among the 315 torrents that back library files: 12 back files in two or more seasons of one series, 2 back specials together with regular episodes, and 1 backs two or more movies.
 - **Data outside the library.** 23 of those 315 torrents hold 50 MB or more that is not in the library, 66 GB together. The 63 rows would remove 64 torrents. 2 of them hold such data, 14 GB together, and both are old downloads that back no library file any more.
 - **Episode ranges.** 20 of the 4,232 episode items on the media server cover a range, each of two episodes. For 18 of them Sonarr holds both episodes in one file. For one, the second episode is in another file or has none, and one belongs to a series without a match. Neither of those two is played, so the rule changes no row today.
+
+**Measured after they were built, 2026-11-22.** Two scans of the reference stack a few seconds apart, one with the binary from before these rules and one with them:
+
+- Both list the same 45 movies, 18 series and 41 torrents, and every movie and series row names the same torrents in both.
+- The new scan reports no waiting row and no tied row. An independent computation of both rules from the apps' raw answers, whole torrents and whole files, expects exactly that.
+- 2 torrents on movie and series rows state data outside the library, 14 GB together, each with the figure the independent computation gives. No row of the torrent list states one.
+- The torrent list matches the independent recomputation torrent by torrent, with 90 file lists read.
+- Both scans took 18 seconds.
