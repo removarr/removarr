@@ -10,7 +10,7 @@ removarr suggests what to delete from a self-hosted media server: watched movies
   - A torrent goes as a whole or stays as a whole. Never delete only part of what a torrent holds.
 - **`LEARNINGS.md`** before you touch an app client, the linking rules or the store. It records what was already found out the hard way.
 - **Work packages** are GitHub issues: stage 2 in four parts, the web UI, packaging, and review follow-ups. Each names what it depends on. Implementation plans are in `docs/superpowers/plans/`.
-- **`WORKFLOW.md`** when you take an issue. It gives the order of work, from picking the issue to the reviewed pull request, and says when to stop and ask.
+- **The `implement-issue` skill** when you take an issue: `.claude/skills/implement-issue/SKILL.md`. It gives the order of work, from picking the issue to the reviewed pull request, and says when to stop and ask. A tool that has no skills reads it as a file.
 
 ## Layout
 
@@ -25,7 +25,7 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 | `internal/config` | Environment variables and saved settings; saved settings take priority |
 | `internal/app`, `internal/api` | Provider wiring and the HTTP API |
 | `docs/superpowers` | Spec and implementation plans |
-| `scripts` | Helpers for the review steps of `WORKFLOW.md`. They need `gh` |
+| `.claude/skills/implement-issue` | The way of working for one issue, as a skill, with the scripts for its review steps. They need `gh` |
 
 ## Commands
 

@@ -2,13 +2,13 @@
 # Show what a review of a pull request found, or resolve some of its threads.
 #
 # Usage:
-#   scripts/review-threads.sh <pull request>
+#   bash review-threads.sh <pull request>
 #       Prints the summary of each reviewer's latest review, then every open thread: the
 #       ID of its first comment, who wrote it, the place in the code, how many comments
 #       the thread has, and the text of the first comment.
 #       Read the summaries too: a reviewer can report a finding there and open no thread
 #       for it. Copilot does that on a second review.
-#   scripts/review-threads.sh <pull request> resolve <comment ID> [<comment ID> ...]
+#   bash review-threads.sh <pull request> resolve <comment ID> [<comment ID> ...]
 #       Resolves the threads that start with these comments. Safe to run again.
 #
 # To answer inside a thread, before resolving it:

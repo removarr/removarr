@@ -1,10 +1,16 @@
-# removarr: way of working
+---
+name: implement-issue
+description: Use when the owner asks to work on, implement, continue or pick up a GitHub issue of removarr, or to work on the next issue. Not for a question about an issue.
+argument-hint: "[issue number]"
+---
+
+# Implementing an issue
 
 One run takes one issue from open to a reviewed pull request. An agent does the run on its own. The owner checks the result and merges it.
 
-`AGENTS.md` holds the rules for every change. This file holds the order of work.
+`AGENTS.md` holds the rules for every change. This skill holds the order of work. Its scripts are in `${CLAUDE_SKILL_DIR}/scripts`, which is the `scripts` folder next to this file.
 
-"The checks" in this file are the commands that `AGENTS.md` lists as checks under "Commands": formatting, vet, the tests, the race tests and the build. Starting the server is not one of them.
+"The checks" in this skill are the commands that `AGENTS.md` lists as checks under "Commands": formatting, vet, the tests, the race tests and the build. Starting the server is not one of them.
 
 ## The run
 
@@ -21,13 +27,13 @@ One run takes one issue from open to a reviewed pull request. An agent does the 
 | 9 | Answer the review | `receiving-code-review` | Every finding of the review has an answer |
 | 10 | Close out | `verification-before-completion` | The report to the owner is written |
 
-The skills are those of the superpowers plugin. "What changes in the skills" below says where a run departs from them. Without the plugin the steps still hold: plan in the same place, write the test first, have a fresh reviewer look at each task and at the whole branch.
+The skills in the table are those of the superpowers plugin. "What changes in the superpowers skills" below says where a run departs from them. Without the plugin the steps still hold: plan in the same place, write the test first, have a fresh reviewer look at each task and at the whole branch.
 
 ## The steps
 
 ### 1. Pick the issue
 
-- Take the issue the owner named. If the owner named none, take the open issue with the lowest number whose dependencies are closed. An issue names them as "Depends on #N".
+- Take the issue the owner named, in the request or as the argument of the command. If the owner named none, take the open issue with the lowest number whose dependencies are closed. An issue names them as "Depends on #N".
 - Issue #8 is a list of follow-ups, not a work package. Never pick it as a whole; see "Follow-ups".
 - If a branch or a pull request for the issue exists already, continue it; see "Where a run continues".
 - One issue per run. When the run ends, stop.
@@ -92,7 +98,7 @@ GitHub reads "close", "fix" or "resolve" in front of an issue number as an order
 
 ```
 gh pr edit <PR> --add-reviewer @copilot
-scripts/wait-for-copilot.sh <PR>
+bash ${CLAUDE_SKILL_DIR}/scripts/wait-for-copilot.sh <PR>
 gh pr checks <PR> --watch
 ```
 
@@ -117,9 +123,9 @@ Use `receiving-code-review`. Copilot is an outside reviewer and has not read the
 - The commands:
 
   ```
-  scripts/review-threads.sh <PR>
+  bash ${CLAUDE_SKILL_DIR}/scripts/review-threads.sh <PR>
   gh api "repos/{owner}/{repo}/pulls/<PR>/comments/<comment ID>/replies" -F body=@reply.md
-  scripts/review-threads.sh <PR> resolve <comment ID> [<comment ID> ...]
+  bash ${CLAUDE_SKILL_DIR}/scripts/review-threads.sh <PR> resolve <comment ID> [<comment ID> ...]
   gh pr comment <PR> --body-file reply.md
   ```
 
@@ -184,9 +190,9 @@ Issue #8 collects small findings that no work package owns.
 - Take items from it when the owner asks, or when they are in code that the current issue changes anyway.
 - A few items together are small work (step 4).
 
-## What changes in the skills
+## What changes in the superpowers skills
 
-The skills assume that the owner is at the keyboard, and they ask for approval several times. A run moves those approvals to the pull request. That means fewer stops and a later veto: a wrong decision costs rework on a branch, never anything on `main`.
+The superpowers skills assume that the owner is at the keyboard, and they ask for approval several times. A run moves those approvals to the pull request. That means fewer stops and a later veto: a wrong decision costs rework on a branch, never anything on `main`.
 
 | Skill | As written | In a run |
 |---|---|---|
@@ -198,4 +204,4 @@ The skills assume that the owner is at the keyboard, and they ask for approval s
 | `executing-plans` | Executes a plan in the session | Not used: small work has no plan file |
 | `dispatching-parallel-agents` | Several agents at once | For reading and searching only, never for two implementers |
 
-Where this file and a skill disagree, this file decides.
+Where this skill and a superpowers skill disagree, this skill decides.

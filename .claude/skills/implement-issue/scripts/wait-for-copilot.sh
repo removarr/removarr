@@ -1,7 +1,7 @@
 #!/bin/bash
 # Wait until Copilot has answered the latest request to review a pull request.
 #
-# Usage: scripts/wait-for-copilot.sh <pull request> [minutes to wait, default 30]
+# Usage: bash wait-for-copilot.sh <pull request> [minutes to wait, default 30]
 #
 # Looks every two minutes (INTERVAL=<seconds> changes that) and ends with status
 #   0  Copilot reviewed after it was last asked; the summary of the review and the open
@@ -70,7 +70,7 @@ while :; do
     # The times are UTC in one format, so comparing them as text compares them as times.
     if [ -n "$reviewed" ] && [[ "$reviewed" > "${asked%% *}" ]]; then
       echo "Copilot reviewed pull request $PR at $reviewed"
-      exec "$HERE/review-threads.sh" "$PR"
+      exec bash "$HERE/review-threads.sh" "$PR"
     fi
     echo "$(date +%H:%M) no review from Copilot on pull request $PR yet"
   else
