@@ -3,6 +3,7 @@ package scan
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/removarr/removarr/internal/domain"
 )
@@ -271,6 +272,20 @@ func TestSeriesEpisodeRangeCountsOnlyWhereSonarrHoldsOneFile(t *testing.T) {
 			wantProtected: 1,
 		},
 		{
+			name:          "an episode after the range's end is not covered",
+			series:        show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(13, 1, 3, 10), ep(21, 2, 1, 21)),
+			eps:           []domain.ServerEpisode{rangeEp(1, 1, 2, seen), s2},
+			wantKeys:      []string{"tvdb:100:s2"},
+			wantUnmatched: 1,
+		},
+		{
+			name:          "an episode before the range's start is not covered",
+			series:        show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(13, 1, 3, 10), ep(21, 2, 1, 21)),
+			eps:           []domain.ServerEpisode{rangeEp(1, 2, 3, seen), s2},
+			wantKeys:      []string{"tvdb:100:s2"},
+			wantUnmatched: 1,
+		},
+		{
 			name:     "absurd end",
 			series:   show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(21, 2, 1, 21)),
 			eps:      []domain.ServerEpisode{rangeEp(1, 1, 2_000_000_000, seen), s2},
@@ -304,6 +319,24 @@ func TestSeriesEpisodeRangeCountsOnlyWhereSonarrHoldsOneFile(t *testing.T) {
 				t.Errorf("Protected = %d, want %d", res.Protected, tt.wantProtected)
 			}
 		})
+	}
+}
+
+func TestSeriesEpisodeLookupDoesNotWalkARange(t *testing.T) {
+	lib := indexLibrary(domain.Library{Episodes: []domain.ServerEpisode{rangeEp(1, 1, 1<<40, seen)}})
+	fileOf := map[epKey]int{{1, 1}: 10}
+	done := make(chan bool)
+	go func() {
+		_, found := lib.episodeStates([]string{"js1"}, 1, 1<<40, 10, fileOf)
+		done <- found
+	}()
+	select {
+	case found := <-done:
+		if !found {
+			t.Error("the last episode of the range was not found")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("looking up one episode took over a second: it walks the range")
 	}
 }
 
