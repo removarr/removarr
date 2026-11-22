@@ -215,7 +215,8 @@ func TestRunWhenAMediaManagerFails(t *testing.T) {
 	st := run(t, p, withUser())
 
 	expect(t, st, domain.ListMovies, 0, "movie manager could not be read: timeout")
-	expect(t, st, domain.ListSeries, 1, "")
+	// The series list needs the movie manager too (spec 6.8, rule 5).
+	expect(t, st, domain.ListSeries, 0, "movie manager could not be read: timeout")
 	// h1 belongs to a movie. With the movie manager down it would look like an orphan.
 	expect(t, st, domain.ListTorrents, 0, "movie manager could not be read")
 }
@@ -452,14 +453,15 @@ func TestRunAsksALinkedPackThatHoldsMoreThanHistorySays(t *testing.T) {
 	expectNoTorrentRows(t, st.summary, st.candidates)
 }
 
-func TestRunKeepsAMixedPackWhileItBacksAnotherSeason(t *testing.T) {
+func TestRunHoldsBackASeasonWhileItsMixedPackBacksAnotherSeason(t *testing.T) {
 	p, _ := mixedPackWorld(2)
 	r := withUser()
 	r.SeriesUnit = domain.UnitSeason
 	st := run(t, p, r)
 
-	// The pack still holds season 2's file, which was imported from it by hand.
-	expectRow(t, st.candidates, domain.SeasonKey("200", 1))
+	// The pack still holds season 2's file, which was imported from it by hand, so season 1
+	// waits (spec 6.3).
+	expectWaiting(t, st.summary, st.candidates, domain.SeasonKey("200", 1))
 	expectNoTorrentRows(t, st.summary, st.candidates)
 }
 
@@ -667,24 +669,82 @@ func TestComputeLinksByContentPerManagerWhenIDsAreShared(t *testing.T) {
 	expectNoTorrentRows(t, summary, candidates)
 }
 
-func TestComputeKeepsAPackThatStillBacksAnotherSeason(t *testing.T) {
+// expectWaiting checks that the series list was produced, holds back exactly one row, and
+// does not list the row with key.
+func expectWaiting(t *testing.T, summary domain.ScanSummary, candidates []domain.Candidate, key string) {
+	t.Helper()
+	if got := summary.Lists[domain.ListSeries]; got.Error != "" || got.Waiting != 1 || got.Candidates != 0 {
+		t.Errorf("series list = %+v, want one row waiting and none listed", got)
+	}
+	if _, found := rowsByKey(candidates)[key]; found {
+		t.Errorf("row %s is listed although it shares a torrent or a file with something that stays", key)
+	}
+}
+
+func TestComputeHoldsBackASeasonWhosePackBacksAnotherSeason(t *testing.T) {
 	r := withUser()
 	r.SeriesUnit = domain.UnitSeason
 	summary, candidates := Compute(r, now, crossWorld(2))
 
-	expectRow(t, candidates, domain.SeasonKey("100", 1))
+	expectWaiting(t, summary, candidates, domain.SeasonKey("100", 1))
 	if _, found := rowsByKey(candidates)[domain.SeasonKey("100", 2)]; found {
 		t.Error("season 2 has a row although nobody watched it")
 	}
 	expectRow(t, candidates, "tmdb:603", "movie")
+	if got := summary.Lists[domain.ListMovies]; got.Waiting != 0 || got.Candidates != 1 {
+		t.Errorf("movie list = %+v, want one row listed and none waiting", got)
+	}
 	expectNoTorrentRows(t, summary, candidates)
 }
 
-// The episodes of one file are normally in one season, so every row that deletes the file
-// holds all of them. This file spans two seasons, so the season 2 row holds only the file's
-// second episode: the torrent goes with that row only if content associates it with that
-// episode too.
-func TestComputeAssociatesEveryEpisodeOfASharedFileByContent(t *testing.T) {
+// One torrent holds both the movie's file and the series' files: the two rows are listed
+// in their own lists, tied to each other, and both name the torrent (spec 6.3).
+func TestComputeTiesRowsAcrossTheTwoLists(t *testing.T) {
+	f := crossWorld()
+	f.Downloads.Value = []domain.Download{{ID: "pack", Name: "Everything", Size: 3400*mb + 4096}}
+	f.Files = map[string][]domain.DownloadFile{"pack": {
+		{Name: "movie.mkv", Size: 700 * mb},
+		{Name: "S01E01.mkv", Size: 800 * mb},
+		{Name: "S01E02E03.mkv", Size: 900 * mb},
+		{Name: "S02E01.mkv", Size: 1000 * mb},
+		{Name: "pack.nfo", Size: 4096},
+	}}
+	summary, candidates := Compute(withUser(), now, f)
+
+	expectRow(t, candidates, "tmdb:603", "pack")
+	expectRow(t, candidates, domain.SeriesKey("100"), "pack")
+	rows := rowsByKey(candidates)
+	movieTie := []domain.RowRef{{List: domain.ListSeries, Key: domain.SeriesKey("100"), Title: "The Show"}}
+	seriesTie := []domain.RowRef{{List: domain.ListMovies, Key: "tmdb:603", Title: "The Matrix"}}
+	if got := rows["tmdb:603"].TiedWith; !reflect.DeepEqual(got, movieTie) {
+		t.Errorf("movie row tied with %+v, want %+v", got, movieTie)
+	}
+	if got := rows[domain.SeriesKey("100")].TiedWith; !reflect.DeepEqual(got, seriesTie) {
+		t.Errorf("series row tied with %+v, want %+v", got, seriesTie)
+	}
+	for _, list := range []domain.ListKind{domain.ListMovies, domain.ListSeries} {
+		if got := summary.Lists[list]; got.Candidates != 1 || got.Waiting != 0 {
+			t.Errorf("%s list = %+v, want one row listed and none waiting", list, got)
+		}
+	}
+	expectNoTorrentRows(t, summary, candidates)
+
+	// The movie is not watched any more: the pack still holds it, so the series row waits.
+	f.Library.Value.Movies[0].States = map[string]domain.UserState{"a": {}}
+	summary, candidates = Compute(withUser(), now, f)
+	if got := summary.Lists[domain.ListSeries]; got.Candidates != 0 || got.Waiting != 1 {
+		t.Errorf("series list = %+v, want the row waiting", got)
+	}
+	if len(candidates) != 0 {
+		t.Errorf("rows %v, want none", rowsByKey(candidates))
+	}
+}
+
+// The episodes of one file are normally in one season. This file spans two seasons, and
+// only season 2 is watched: deleting the season 2 row's files would remove the unwatched
+// episode of season 1 with it, so the row waits (spec 6.3). That every episode of a shared
+// file is listed with it is pinned by the unit tests of scan.EpisodeFiles.
+func TestComputeHoldsBackASeasonWhoseFileHoldsAnEpisodeThatStays(t *testing.T) {
 	shared := &domain.MediaFile{ID: 30, Size: 900 * mb}
 	f := Fetched{
 		Users: []domain.User{{ID: "a", Name: "Alice"}},
@@ -710,7 +770,8 @@ func TestComputeAssociatesEveryEpisodeOfASharedFileByContent(t *testing.T) {
 	}
 	r := withUser()
 	r.SeriesUnit = domain.UnitSeason
-	_, candidates := Compute(r, now, f)
+	summary, candidates := Compute(r, now, f)
 
-	expectRow(t, candidates, domain.SeasonKey("100", 2), "double")
+	expectWaiting(t, summary, candidates, domain.SeasonKey("100", 2))
+	expectNoTorrentRows(t, summary, candidates)
 }

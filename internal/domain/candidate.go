@@ -34,6 +34,8 @@ type TorrentInfo struct {
 	SeedingDays  *float64  `json:"seedingDays"`
 	AddedAt      time.Time `json:"addedAt"`
 	BelowSeedMin bool      `json:"belowSeedMin"`
+	// OutsideLibrary is how many bytes of the torrent are not in the library, when that is 50 MB or more.
+	OutsideLibrary int64 `json:"outsideLibrary,omitempty"`
 }
 
 // Candidate is one row in a list: something removarr suggests deleting.
@@ -48,9 +50,18 @@ type Candidate struct {
 	StillAiring  bool          `json:"stillAiring,omitempty"` // series rows
 	WatchedBy    []string      `json:"watchedBy,omitempty"`   // user names
 	WatchedAt    *time.Time    `json:"watchedAt,omitempty"`
-	Reason       string        `json:"reason,omitempty"` // torrent list: ReasonOrphan or ReasonUnlinked
-	Torrents     []TorrentInfo `json:"torrents"`         // media rows: torrents Delete would remove; torrent rows: the torrent itself
-	BelowSeedMin bool          `json:"belowSeedMin"`     // true when any of Torrents is below the seeding minimum
+	Reason       string        `json:"reason,omitempty"`   // torrent list: ReasonOrphan or ReasonUnlinked
+	Torrents     []TorrentInfo `json:"torrents"`           // media rows: torrents Delete would remove; torrent rows: the torrent itself
+	BelowSeedMin bool          `json:"belowSeedMin"`       // true when any of Torrents is below the seeding minimum
+	TiedWith     []RowRef      `json:"tiedWith,omitempty"` // rows that are deleted together with this one (spec 6.3)
+}
+
+// RowRef names another row.
+type RowRef struct {
+	List   ListKind `json:"list"`
+	Key    string   `json:"key"`
+	Title  string   `json:"title"`
+	Season int      `json:"season,omitempty"` // season rows
 }
 
 // MovieKey is the stable key of a movie row: its TMDB ID, or its IMDb ID when there is none.

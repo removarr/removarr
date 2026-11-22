@@ -8,20 +8,18 @@ import (
 
 // MoviesInput is everything the watched movie list is computed from.
 type MoviesInput struct {
-	Rules     domain.Rules
-	Now       time.Time
-	Users     []domain.User
-	Library   domain.Library
-	Snapshot  domain.MovieSnapshot
-	Downloads []domain.Download
-	Index     *LinkIndex
+	Rules    domain.Rules
+	Now      time.Time
+	Users    []domain.User
+	Library  domain.Library
+	Snapshot domain.MovieSnapshot
 }
 
-// Movies returns the watched movie list (spec 6.2 to 6.4), sorted by key.
+// Movies returns the qualifying movies of the watched movie list (spec 6.2 to 6.4) as Rows,
+// sorted by key. Candidates stays empty: WholeTorrents fills it.
 func Movies(in MoviesInput) ListResult {
 	var res ListResult
 	names := userNames(in.Users)
-	downloads := downloadsByID(in.Downloads)
 
 	byTMDB := map[string][]domain.ServerMovie{}
 	byIMDB := map[string][]domain.ServerMovie{}
@@ -61,20 +59,21 @@ func Movies(in MoviesInput) ListResult {
 			res.Protected++
 			continue
 		}
-		removable := in.Index.Removable(in.Snapshot.Links, []int{m.ID}, []int{m.File.ID})
-		torrents, below := torrentInfos(in.Rules, downloads, removable)
-		res.Candidates = append(res.Candidates, domain.Candidate{
-			List:         domain.ListMovies,
-			Key:          domain.MovieKey(m.IDs),
-			Title:        m.Title,
-			Year:         m.Year,
-			Size:         m.File.Size,
-			WatchedBy:    namesOf(names, v.By),
-			WatchedAt:    v.At,
-			Torrents:     torrents,
-			BelowSeedMin: below,
+		res.Rows = append(res.Rows, Row{
+			Candidate: domain.Candidate{
+				List:      domain.ListMovies,
+				Key:       domain.MovieKey(m.IDs),
+				Title:     m.Title,
+				Year:      m.Year,
+				Size:      m.File.Size,
+				WatchedBy: namesOf(names, v.By),
+				WatchedAt: v.At,
+			},
+			Manager: ManagerMovies,
+			ItemIDs: []int{m.ID},
+			FileIDs: []int{m.File.ID},
 		})
 	}
-	sortByKey(res.Candidates)
+	sortRows(res.Rows)
 	return res
 }

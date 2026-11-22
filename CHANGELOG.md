@@ -10,6 +10,32 @@ What changed in removarr, written for the person who runs it.
 
 ## Unreleased
 
+### Stage 2a: whole torrents, whole files and episode ranges (pull request #9)
+
+Rules that follow from two principles: free disk space without removing anything unwatched, and never delete only part of what a torrent holds. Still read-only: nothing is deleted yet.
+
+#### Scope
+
+- **Whole torrents:** a movie, series or season is listed only when every torrent that backs its files would go with it. A row whose torrent also holds something that stays is not listed, and the scan summary counts it as `waiting`. Examples: a multi-season pack with an unwatched season, a collection pack with a protected movie, a download that is still in a media manager's queue.
+- **Whole files:** the same for library files. A file that also holds an episode that stays keeps its row waiting.
+- **Tied rows:** rows that share a torrent or a file and can all go are listed with `tiedWith`, naming each other. They are meant to be deleted together.
+- **Episode ranges:** a media server item that covers several episodes counts for a further episode only when Sonarr holds it in the same file as the first.
+- **Data outside the library:** each torrent on a movie, series or season row states `outsideLibrary`, the bytes it holds that are not in the library, when that is 50 MB or more.
+- **List dependencies:** with both Sonarr and Radarr configured, each watched list needs both to answer.
+- **API additions:** `tiedWith` on rows, `outsideLibrary` on a row's torrents, `waiting` in each list's summary.
+- **Fixed:** a file that spans two seasons was counted twice in the size of a series row.
+
+#### Deployment
+
+- No database migration and no new environment variable.
+- Scan again after updating. The stored lists were computed with the old rules.
+
+#### Breaking changes
+
+- With both Sonarr and Radarr configured, neither watched list is produced while one of them cannot be read. Before, the other list was still shown.
+- Rows can leave the watched lists. A row that would delete only part of a torrent or of a file now waits, and an episode covered only by a range that Sonarr does not confirm counts as unwatched.
+- A row can name more torrents than before: tied rows each name the torrent they share.
+
 ### Stage 1: read-only core (pull request #1)
 
 The first working version. It scans Jellyfin, Sonarr, Radarr and qBittorrent on demand and serves three suggestion lists over a JSON API. It changes nothing in those apps: there is no deletion, no ignore and no web UI yet.

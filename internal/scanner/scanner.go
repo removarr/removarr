@@ -234,23 +234,9 @@ func (s *Service) fetch(ctx context.Context, p Providers, rules domain.Rules) Fe
 // unlinked.
 func readFiles(ctx context.Context, client providers.DownloadClient, rules domain.Rules, f Fetched) (map[string][]domain.DownloadFile, error) {
 	history := scan.NewLinkIndex(linkData(&f, nil)...)
-	// A download ID means the same download in both managers; file IDs do not, so each
-	// manager's links are matched against its own files and the results added.
-	sourced := map[string]int64{}
-	add := func(bytes map[string]int64) {
-		for id, n := range bytes {
-			sourced[id] += n
-		}
-	}
-	if f.Movies.ok() {
-		add(scan.SourcedBytes(f.Movies.Value.Links, movieFiles(f.Movies.Value)))
-	}
-	if f.Series.ok() {
-		add(scan.SourcedBytes(f.Series.Value.Links, episodeFiles(f.Series.Value)))
-	}
 	files := map[string][]domain.DownloadFile{}
 	for _, d := range f.Downloads.Value {
-		if !scan.NeedsContentCheck(rules, history, d, sourced[d.ID]) {
+		if !scan.NeedsContentCheck(rules, history, d, history.BackedBytes(d.ID)) {
 			continue
 		}
 		list, err := client.Files(ctx, d.ID)
@@ -267,66 +253,26 @@ func readFiles(ctx context.Context, client providers.DownloadClient, rules domai
 }
 
 // linkData returns the link data of every media manager that answered. With files given,
-// each manager's links are first extended by content (spec 6.6) and stored back into f, so
-// the list rules see the same links the index is built from.
+// each manager's links are first extended by content (spec 6.6) and stored back into f. The
+// list rules Movies and Series do not read the links: the index is built from them, and
+// WholeTorrents and the torrent list use the index.
 func linkData(f *Fetched, files map[string][]domain.DownloadFile) []scan.ManagerFiles {
 	var managers []scan.ManagerFiles
 	if f.Movies.ok() {
-		library := movieFiles(f.Movies.Value)
+		library := scan.MovieFiles(f.Movies.Value)
 		if files != nil {
 			f.Movies.Value.Links = scan.ContentLinks(f.Movies.Value.Links, library, files)
 		}
-		managers = append(managers, scan.ManagerFiles{Links: f.Movies.Value.Links, FileIDs: fileIDs(library)})
+		managers = append(managers, scan.ManagerFiles{Manager: scan.ManagerMovies, Links: f.Movies.Value.Links, Files: library})
 	}
 	if f.Series.ok() {
-		library := episodeFiles(f.Series.Value)
+		library := scan.EpisodeFiles(f.Series.Value)
 		if files != nil {
 			f.Series.Value.Links = scan.ContentLinks(f.Series.Value.Links, library, files)
 		}
-		managers = append(managers, scan.ManagerFiles{Links: f.Series.Value.Links, FileIDs: fileIDs(library)})
+		managers = append(managers, scan.ManagerFiles{Manager: scan.ManagerSeries, Links: f.Series.Value.Links, Files: library})
 	}
 	return managers
-}
-
-// movieFiles lists the current movie files with the movie each belongs to.
-func movieFiles(s domain.MovieSnapshot) []scan.LibraryFile {
-	var out []scan.LibraryFile
-	for _, m := range s.Movies {
-		if m.File != nil {
-			out = append(out, scan.LibraryFile{ID: m.File.ID, Size: m.File.Size, Items: []int{m.ID}})
-		}
-	}
-	return out
-}
-
-// episodeFiles lists the current episode files with the episodes each belongs to. The
-// episodes of a multi-episode file share one file.
-func episodeFiles(s domain.SeriesSnapshot) []scan.LibraryFile {
-	var out []scan.LibraryFile
-	at := map[int]int{} // file ID -> its position in out
-	for _, show := range s.Series {
-		for _, e := range show.Episodes {
-			if e.File == nil {
-				continue
-			}
-			i, seen := at[e.File.ID]
-			if !seen {
-				i = len(out)
-				at[e.File.ID] = i
-				out = append(out, scan.LibraryFile{ID: e.File.ID, Size: e.File.Size})
-			}
-			out[i].Items = append(out[i].Items, e.ID)
-		}
-	}
-	return out
-}
-
-func fileIDs(files []scan.LibraryFile) []int {
-	ids := make([]int, 0, len(files))
-	for _, f := range files {
-		ids = append(ids, f.ID)
-	}
-	return ids
 }
 
 const (
@@ -359,15 +305,23 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 		addFolders(f.Series.Value.RootFolders)
 	}
 	// f is this function's own copy, so extending its links by content stays local.
+	// Without the file lists, links come from history alone, which misses files imported
+	// by hand (spec 6.8, rule 5).
+	if f.Downloads.ok() && (f.Movies.ok() || f.Series.ok()) && f.Files == nil {
+		f.Downloads.Err = errors.New("its file lists were not read")
+	}
 	index := scan.NewLinkIndex(linkData(&f, f.Files)...)
 
-	add := func(list domain.ListKind, problem string, compute func() scan.ListResult) {
+	// add writes a list's summary and appends its candidates. res is nil when the list
+	// cannot be produced.
+	add := func(list domain.ListKind, problem string, res *scan.ListResult) {
 		if problem != "" {
 			summary.Lists[list] = domain.ListSummary{Error: problem}
 			return
 		}
-		res := compute()
-		summary.Lists[list] = domain.ListSummary{Candidates: len(res.Candidates), Protected: res.Protected, Unmatched: res.Unmatched}
+		summary.Lists[list] = domain.ListSummary{
+			Candidates: len(res.Candidates), Protected: res.Protected, Unmatched: res.Unmatched, Waiting: res.Waiting,
+		}
 		candidates = append(candidates, res.Candidates...)
 	}
 
@@ -375,25 +329,43 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 	if len(rules.CountingUsers) == 0 {
 		noUsers = "No counting users are selected."
 	}
-	watchedProblem := func(manager string) string {
-		return first(manager, f.Downloads.problem(roleDownloads), f.Library.problem(roleMediaServer), noUsers)
+	// A watched list needs both media managers when both are configured: a download that
+	// backs an item of the other manager would look unlinked otherwise. A manager that is
+	// not configured blocks nothing.
+	watchedProblem := func(own string, other string) string {
+		return first(own, other, f.Downloads.problem(roleDownloads), f.Library.problem(roleMediaServer), noUsers)
 	}
 
-	add(domain.ListMovies, watchedProblem(f.Movies.problem(roleMovies)), func() scan.ListResult {
-		return scan.Movies(scan.MoviesInput{
-			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value,
-			Snapshot: f.Movies.Value, Downloads: f.Downloads.Value, Index: index,
+	moviesProblem := watchedProblem(f.Movies.problem(roleMovies), failure(f.Series.Configured, f.Series.Err, roleSeries))
+	seriesProblem := watchedProblem(f.Series.problem(roleSeries), failure(f.Movies.Configured, f.Movies.Err, roleMovies))
+	// The rows of both watched lists go through the whole-torrent rule together: a torrent
+	// can back a movie file and an episode file (spec 6.3).
+	var movies, series *scan.ListResult
+	var watched []*scan.ListResult
+	if moviesProblem == "" {
+		res := scan.Movies(scan.MoviesInput{
+			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value, Snapshot: f.Movies.Value,
 		})
-	})
-	add(domain.ListSeries, watchedProblem(f.Series.problem(roleSeries)), func() scan.ListResult {
-		return scan.Series(scan.SeriesInput{
-			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value,
-			Snapshot: f.Series.Value, Downloads: f.Downloads.Value, Index: index,
+		movies = &res
+		watched = append(watched, movies)
+	}
+	if seriesProblem == "" {
+		res := scan.Series(scan.SeriesInput{
+			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value, Snapshot: f.Series.Value,
 		})
-	})
-	add(domain.ListTorrents, torrentsProblem(f), func() scan.ListResult {
-		return scan.Torrents(scan.TorrentsInput{Rules: rules, Downloads: f.Downloads.Value, Index: index})
-	})
+		series = &res
+		watched = append(watched, series)
+	}
+	scan.WholeTorrents(rules, index, f.Downloads.Value, watched...)
+
+	add(domain.ListMovies, moviesProblem, movies)
+	add(domain.ListSeries, seriesProblem, series)
+	torrents := scan.ListResult{}
+	problem := torrentsProblem(f)
+	if problem == "" {
+		torrents = scan.Torrents(scan.TorrentsInput{Rules: rules, Downloads: f.Downloads.Value, Index: index})
+	}
+	add(domain.ListTorrents, problem, &torrents)
 	return summary, candidates
 }
 
@@ -414,6 +386,15 @@ func torrentsProblem(f Fetched) string {
 		return f.Series.problem(roleSeries)
 	}
 	return ""
+}
+
+// failure explains why a configured app could not be read, or returns "" when the app is
+// not configured or answered.
+func failure(configured bool, err error, role string) string {
+	if !configured || err == nil {
+		return ""
+	}
+	return "The " + role + " could not be read: " + err.Error()
 }
 
 // first returns the first non-empty text.

@@ -8,7 +8,7 @@ import (
 )
 
 // movieInput returns a scan input with one movie, The Matrix, watched by Alice nine days ago
-// and backed by torrent h1. mods adjust the input before the link index is built.
+// and backed by torrent h1.
 func movieInput(mods ...func(*MoviesInput)) MoviesInput {
 	l := links()
 	l.Grabbed["h1"] = []int{1}
@@ -30,23 +30,24 @@ func movieInput(mods ...func(*MoviesInput)) MoviesInput {
 			}},
 			Links: l,
 		},
-		Downloads: []domain.Download{dl("h1")},
 	}
 	for _, m := range mods {
 		m(&in)
 	}
-	var fileIDs []int
-	for _, m := range in.Snapshot.Movies {
-		if m.File != nil {
-			fileIDs = append(fileIDs, m.File.ID)
-		}
-	}
-	in.Index = NewLinkIndex(ManagerFiles{Links: in.Snapshot.Links, FileIDs: fileIDs})
 	return in
 }
 
+// listMovies computes the movie list and applies the whole-torrent rule with the given
+// downloads in the client.
+func listMovies(in MoviesInput, downloads ...domain.Download) ListResult {
+	res := Movies(in)
+	x := NewLinkIndex(ManagerFiles{Manager: ManagerMovies, Links: in.Snapshot.Links, Files: MovieFiles(in.Snapshot)})
+	WholeTorrents(in.Rules, x, downloads, &res)
+	return res
+}
+
 func TestMoviesSuggestsAWatchedMovie(t *testing.T) {
-	res := Movies(movieInput())
+	res := listMovies(movieInput(), dl("h1"))
 	if len(res.Candidates) != 1 {
 		t.Fatalf("got %d candidates, want 1", len(res.Candidates))
 	}
@@ -94,7 +95,7 @@ func TestMoviesSkips(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res := Movies(movieInput(tt.mod))
+			res := listMovies(movieInput(tt.mod), dl("h1"))
 			if len(res.Candidates) != 0 {
 				t.Errorf("got %d candidates, want 0", len(res.Candidates))
 			}
@@ -107,7 +108,7 @@ func TestMoviesSkips(t *testing.T) {
 }
 
 func TestMoviesUnwatchedProtectedMovieIsNotCounted(t *testing.T) {
-	res := Movies(movieInput(func(in *MoviesInput) {
+	res := listMovies(movieInput(func(in *MoviesInput) {
 		in.Snapshot.Movies[0].Tags = []string{"keep"}
 		in.Library.Movies[0].States = map[string]domain.UserState{"a": {}}
 	}))
@@ -117,7 +118,7 @@ func TestMoviesUnwatchedProtectedMovieIsNotCounted(t *testing.T) {
 }
 
 func TestMoviesFavouriteProtectionCanBeTurnedOff(t *testing.T) {
-	res := Movies(movieInput(func(in *MoviesInput) {
+	res := listMovies(movieInput(func(in *MoviesInput) {
 		in.Rules.ProtectFavorites = false
 		st := played("2026-03-01T20:00:00Z")
 		st.Favorite = true
@@ -129,7 +130,7 @@ func TestMoviesFavouriteProtectionCanBeTurnedOff(t *testing.T) {
 }
 
 func TestMoviesFallsBackToIMDb(t *testing.T) {
-	res := Movies(movieInput(func(in *MoviesInput) {
+	res := listMovies(movieInput(func(in *MoviesInput) {
 		in.Library.Movies[0].IDs = domain.ExternalIDs{IMDB: "tt0133093"}
 	}))
 	if len(res.Candidates) != 1 {
@@ -138,7 +139,7 @@ func TestMoviesFallsBackToIMDb(t *testing.T) {
 }
 
 func TestMoviesMergesSeveralServerItems(t *testing.T) {
-	res := Movies(movieInput(func(in *MoviesInput) {
+	res := listMovies(movieInput(func(in *MoviesInput) {
 		in.Rules.CountingUsers = []string{"a", "b"}
 		in.Library.Movies = append(in.Library.Movies, domain.ServerMovie{
 			ID: "j2", Title: "The Matrix (4K)",
@@ -156,13 +157,25 @@ func TestMoviesMergesSeveralServerItems(t *testing.T) {
 }
 
 func TestMoviesFlagsSeedingAndToleratesMissingTorrents(t *testing.T) {
-	res := Movies(movieInput(func(in *MoviesInput) { in.Rules.MinRatio = 3 }))
+	res := listMovies(movieInput(func(in *MoviesInput) { in.Rules.MinRatio = 3 }), dl("h1"))
 	if !res.Candidates[0].BelowSeedMin {
 		t.Error("ratio 2 is below a minimum of 3, the row must be flagged")
 	}
 
-	res = Movies(movieInput(func(in *MoviesInput) { in.Downloads = nil }))
+	res = listMovies(movieInput())
 	if got := res.Candidates[0].Torrents; got == nil || len(got) != 0 {
 		t.Errorf("Torrents = %v, want an empty, non-nil list when the torrent is gone from the client", got)
+	}
+}
+
+func TestMoviesRowSaysWhatDeleteTouches(t *testing.T) {
+	res := Movies(movieInput())
+	if len(res.Candidates) != 0 || len(res.Rows) != 1 {
+		t.Fatalf("got %d candidates and %d rows, want only one row", len(res.Candidates), len(res.Rows))
+	}
+	row := res.Rows[0]
+	if row.Candidate.Key != "tmdb:603" || row.Manager != ManagerMovies ||
+		!reflect.DeepEqual(row.ItemIDs, []int{1}) || !reflect.DeepEqual(row.FileIDs, []int{10}) {
+		t.Errorf("row = %+v, want tmdb:603 in the movie manager, item 1, file 10", row)
 	}
 }

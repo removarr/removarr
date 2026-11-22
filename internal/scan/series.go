@@ -9,14 +9,16 @@ import (
 
 // SeriesInput is everything the watched series list is computed from.
 type SeriesInput struct {
-	Rules     domain.Rules
-	Now       time.Time
-	Users     []domain.User
-	Library   domain.Library
-	Snapshot  domain.SeriesSnapshot
-	Downloads []domain.Download
-	Index     *LinkIndex
-	Ignored   map[string]bool // candidate keys the user has ignored
+	Rules    domain.Rules
+	Now      time.Time
+	Users    []domain.User
+	Library  domain.Library
+	Snapshot domain.SeriesSnapshot
+	// Ignored holds the candidate keys the user has ignored. Today it only stops the per-season
+	// merge into one series row. Ignored rows are not removed here: whoever builds ignoring must
+	// take them out of Rows before WholeTorrents, or "an ignored row stays, so the group it
+	// belongs to waits" (spec 6.3) does not hold.
+	Ignored map[string]bool
 }
 
 type epKey struct{ season, number int }
@@ -36,17 +38,19 @@ func (a *seasonAgg) qualifies(r domain.Rules, now time.Time) bool {
 	return len(a.itemIDs) > 0 && a.watched == len(a.itemIDs) && GraceOK(r, a.at, now)
 }
 
-// Series returns the watched series list (spec 6.2 to 6.4), sorted by key.
+// Series returns the qualifying series and seasons of the watched series list (spec 6.2 to
+// 6.4) as Rows, sorted by key. Candidates stays empty: WholeTorrents fills it.
 func Series(in SeriesInput) ListResult {
 	var res ListResult
 	lib := indexLibrary(in.Library)
-	b := rowBuilder{in: in, names: userNames(in.Users), downloads: downloadsByID(in.Downloads)}
+	b := rowBuilder{in: in, names: userNames(in.Users)}
 
 	for _, s := range in.Snapshot.Series {
 		if s.IDs.TVDB == "" {
 			continue
 		}
 		serverIDs := lib.match(s.IDs)
+		fileOf := fileIDsOf(s)
 		seasons := map[int]*seasonAgg{}
 		for _, e := range s.Episodes {
 			if e.File == nil {
@@ -60,7 +64,7 @@ func Series(in SeriesInput) ListResult {
 			a.files[e.File.ID] = e.File.Size
 			a.itemIDs = append(a.itemIDs, e.ID)
 
-			states, found := lib.episodeStates(serverIDs, e.Season, e.Number)
+			states, found := lib.episodeStates(serverIDs, e.Season, e.Number, e.File.ID, fileOf)
 			if !found {
 				if e.Season > 0 {
 					res.Unmatched++
@@ -98,7 +102,7 @@ func Series(in SeriesInput) ListResult {
 		all := len(qualifying) == len(regular)
 		perSeason := in.Rules.SeriesUnit == domain.UnitSeason
 
-		var rows []domain.Candidate
+		var rows []Row
 		switch {
 		case all && !(perSeason && anySeasonIgnored(in.Ignored, s, regular)):
 			rows = append(rows, b.seriesRow(s, regular, seasons))
@@ -114,10 +118,33 @@ func Series(in SeriesInput) ListResult {
 			res.Protected++
 			continue
 		}
-		res.Candidates = append(res.Candidates, rows...)
+		res.Rows = append(res.Rows, rows...)
 	}
-	sortByKey(res.Candidates)
+	sortRows(res.Rows)
 	return res
+}
+
+// fileIDsOf maps each episode of a managed series that has a file to that file's ID. A
+// (season, number) listed with two different files is left out: its file is not known.
+func fileIDsOf(s domain.Series) map[epKey]int {
+	out := map[epKey]int{}
+	ambiguous := map[epKey]bool{}
+	for _, e := range s.Episodes {
+		if e.File == nil {
+			continue
+		}
+		k := epKey{e.Season, e.Number}
+		if ambiguous[k] {
+			continue
+		}
+		if id, ok := out[k]; ok && id != e.File.ID {
+			delete(out, k)
+			ambiguous[k] = true
+			continue
+		}
+		out[k] = e.File.ID
+	}
+	return out
 }
 
 func anySeasonIgnored(ignored map[string]bool, s domain.Series, regular []*seasonAgg) bool {
@@ -131,14 +158,13 @@ func anySeasonIgnored(ignored map[string]bool, s domain.Series, regular []*seaso
 
 // rowBuilder turns seasons into rows.
 type rowBuilder struct {
-	in        SeriesInput
-	names     map[string]string
-	downloads map[string]domain.Download
+	in    SeriesInput
+	names map[string]string
 }
 
 // seriesRow builds a whole-series row. regular are the regular seasons with files, all of
 // which qualify; seasons also holds the specials.
-func (b rowBuilder) seriesRow(s domain.Series, regular []*seasonAgg, seasons map[int]*seasonAgg) domain.Candidate {
+func (b rowBuilder) seriesRow(s domain.Series, regular []*seasonAgg, seasons map[int]*seasonAgg) Row {
 	deleted := regular
 	var itemIDs []int
 	if s.Ended {
@@ -156,31 +182,36 @@ func (b rowBuilder) seriesRow(s domain.Series, regular []*seasonAgg, seasons map
 			itemIDs = append(itemIDs, a.itemIDs...)
 		}
 	}
-	c := b.row(s, regular, deleted, itemIDs)
-	c.Key = domain.SeriesKey(s.IDs.TVDB)
-	c.Scope = domain.ScopeSeries
-	c.StillAiring = !s.Ended
-	return c
+	row := b.row(s, regular, deleted, itemIDs)
+	row.Candidate.Key = domain.SeriesKey(s.IDs.TVDB)
+	row.Candidate.Scope = domain.ScopeSeries
+	row.Candidate.StillAiring = !s.Ended
+	return row
 }
 
 // seasonRow builds the row of one qualifying season.
-func (b rowBuilder) seasonRow(s domain.Series, a *seasonAgg) domain.Candidate {
+func (b rowBuilder) seasonRow(s domain.Series, a *seasonAgg) Row {
 	one := []*seasonAgg{a}
-	c := b.row(s, one, one, a.itemIDs)
-	c.Key = domain.SeasonKey(s.IDs.TVDB, a.number)
-	c.Scope = domain.ScopeSeason
-	c.Season = a.number
-	return c
+	row := b.row(s, one, one, a.itemIDs)
+	row.Candidate.Key = domain.SeasonKey(s.IDs.TVDB, a.number)
+	row.Candidate.Scope = domain.ScopeSeason
+	row.Candidate.Season = a.number
+	return row
 }
 
 // row builds what series and season rows share. watchedOver are the seasons the watched date
 // and watchers come from; deleted are the seasons whose files Delete would remove; itemIDs
 // are the episodes Delete affects.
-func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, itemIDs []int) domain.Candidate {
+func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, itemIDs []int) Row {
 	var size int64
 	var fileIDs []int
+	counted := map[int]bool{} // a file can hold episodes of two seasons
 	for _, a := range deleted {
 		for id, bytes := range a.files {
+			if counted[id] {
+				continue
+			}
+			counted[id] = true
 			size += bytes
 			fileIDs = append(fileIDs, id)
 		}
@@ -204,17 +235,18 @@ func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, item
 		}
 	}
 
-	removable := b.in.Index.Removable(b.in.Snapshot.Links, itemIDs, fileIDs)
-	torrents, below := torrentInfos(b.in.Rules, b.downloads, removable)
-	return domain.Candidate{
-		List:         domain.ListSeries,
-		Title:        s.Title,
-		Year:         s.Year,
-		Size:         size,
-		WatchedBy:    namesOf(b.names, by),
-		WatchedAt:    at,
-		Torrents:     torrents,
-		BelowSeedMin: below,
+	return Row{
+		Candidate: domain.Candidate{
+			List:      domain.ListSeries,
+			Title:     s.Title,
+			Year:      s.Year,
+			Size:      size,
+			WatchedBy: namesOf(b.names, by),
+			WatchedAt: at,
+		},
+		Manager: ManagerSeries,
+		ItemIDs: itemIDs,
+		FileIDs: fileIDs,
 	}
 }
 
@@ -222,7 +254,16 @@ func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, item
 type libraryIndex struct {
 	byTVDB, byIMDB, byTMDB map[string][]string // external ID -> media server series IDs
 	favoriteOf             map[string]map[string]bool
-	episodes               map[string]map[epKey]map[string]domain.UserState
+	// episodes holds the states of every item under its first episode.
+	episodes map[string]map[epKey]map[string]domain.UserState
+	// ranges holds the items that cover more than one episode, by media server series and season.
+	ranges map[string]map[int][]episodeRange
+}
+
+// episodeRange is a media server item that covers episodes first to last of one season.
+type episodeRange struct {
+	first, last int
+	states      map[string]domain.UserState
 }
 
 func indexLibrary(lib domain.Library) *libraryIndex {
@@ -232,6 +273,7 @@ func indexLibrary(lib domain.Library) *libraryIndex {
 		byTMDB:     map[string][]string{},
 		favoriteOf: map[string]map[string]bool{},
 		episodes:   map[string]map[epKey]map[string]domain.UserState{},
+		ranges:     map[string]map[int][]episodeRange{},
 	}
 	for _, s := range lib.Series {
 		if s.IDs.TVDB != "" {
@@ -246,18 +288,21 @@ func indexLibrary(lib domain.Library) *libraryIndex {
 		x.favoriteOf[s.ID] = s.FavoriteOf
 	}
 	for _, e := range lib.Episodes {
-		last := e.EpisodeEnd
-		if last < e.Episode {
-			last = e.Episode
-		}
 		byEpisode := x.episodes[e.SeriesID]
 		if byEpisode == nil {
 			byEpisode = map[epKey]map[string]domain.UserState{}
 			x.episodes[e.SeriesID] = byEpisode
 		}
-		for number := e.Episode; number <= last; number++ {
-			k := epKey{e.Season, number}
-			byEpisode[k] = mergeStates(byEpisode[k], e.States)
+		k := epKey{e.Season, e.Episode}
+		byEpisode[k] = mergeStates(byEpisode[k], e.States)
+		// The range itself is kept as two numbers: never expanded, whatever its end.
+		if e.EpisodeEnd > e.Episode {
+			bySeason := x.ranges[e.SeriesID]
+			if bySeason == nil {
+				bySeason = map[int][]episodeRange{}
+				x.ranges[e.SeriesID] = bySeason
+			}
+			bySeason[e.Season] = append(bySeason[e.Season], episodeRange{e.Episode, e.EpisodeEnd, e.States})
 		}
 	}
 	return x
@@ -279,13 +324,27 @@ func (x *libraryIndex) match(ids domain.ExternalIDs) []string {
 }
 
 // episodeStates returns the merged watch states of one episode across the matched series,
-// and whether the media server has the episode at all.
-func (x *libraryIndex) episodeStates(serverIDs []string, season, number int) (map[string]domain.UserState, bool) {
+// and whether the media server has the episode at all. fileID is the file the series manager
+// holds the episode in; fileOf maps the managed series' episodes to their file IDs.
+//
+// An item that covers a range counts for its first episode, and for a further episode only
+// when the series manager holds the range's first episode in the same file (spec 6.2).
+func (x *libraryIndex) episodeStates(serverIDs []string, season, number, fileID int, fileOf map[epKey]int) (map[string]domain.UserState, bool) {
 	var states map[string]domain.UserState
 	found := false
 	for _, id := range serverIDs {
 		if st, ok := x.episodes[id][epKey{season, number}]; ok {
 			states = mergeStates(states, st)
+			found = true
+		}
+		for _, r := range x.ranges[id][season] {
+			if number <= r.first || number > r.last {
+				continue
+			}
+			if firstFile, ok := fileOf[epKey{season, r.first}]; !ok || firstFile != fileID {
+				continue
+			}
+			states = mergeStates(states, r.states)
 			found = true
 		}
 	}
