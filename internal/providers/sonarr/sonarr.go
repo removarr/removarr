@@ -134,7 +134,13 @@ func (c *Client) episodes(ctx context.Context, seriesID int) ([]domain.Episode, 
 			AirDate: httpjson.ParseTime(e.AirDateUTC),
 		}
 		if e.HasFile && e.EpisodeFileID != 0 {
-			episode.File = &domain.MediaFile{ID: e.EpisodeFileID, Size: sizes[e.EpisodeFileID]}
+			size, known := sizes[e.EpisodeFileID]
+			if !known {
+				// The two lists are separate requests, so the library changed in between.
+				// A size of 0 would be a guess (spec 6.8, rule 5).
+				return nil, fmt.Errorf("episode file %d is not in the file list; the library changed while it was read", e.EpisodeFileID)
+			}
+			episode.File = &domain.MediaFile{ID: e.EpisodeFileID, Size: size}
 		}
 		out = append(out, episode)
 	}

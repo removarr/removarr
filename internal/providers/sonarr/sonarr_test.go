@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/removarr/removarr/internal/domain"
@@ -99,5 +100,33 @@ func TestSeries(t *testing.T) {
 	detail, err := c.Test(context.Background())
 	if err != nil || detail != "Sonarr 4.0.9" {
 		t.Errorf("Test = %q, %v", detail, err)
+	}
+}
+
+// The file list and the episode list are two requests. An episode that points at a file the
+// file list does not hold means the library changed in between. A size of 0 would be a
+// guess: the row would show the wrong size and the file could not be linked by content.
+func TestSeriesFailsWhenAnEpisodeFileIsMissingFromTheFileList(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v3/series", body(`[
+		{"id":1,"title":"The Show","tvdbId":100,"status":"ended","tags":[],"statistics":{"episodeFileCount":2}}
+	]`))
+	mux.HandleFunc("/api/v3/episode", body(`[
+		{"id":11,"seasonNumber":1,"episodeNumber":1,"hasFile":true,"episodeFileId":111},
+		{"id":12,"seasonNumber":1,"episodeNumber":2,"hasFile":true,"episodeFileId":222}
+	]`))
+	mux.HandleFunc("/api/v3/episodefile", body(`[{"id":111,"size":900}]`))
+	mux.HandleFunc("/api/v3/tag", body(`[]`))
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err := New(srv.URL, "k", srv.Client()).Series(context.Background())
+	if err == nil {
+		t.Fatal("Series succeeded although episode 12 points at file 222, which the file list does not hold")
+	}
+	for _, want := range []string{`"The Show"`, "222"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %s", err, want)
+		}
 	}
 }
