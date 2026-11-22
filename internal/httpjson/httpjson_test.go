@@ -116,6 +116,33 @@ func TestSameHostRedirectsFollowsTheSameHost(t *testing.T) {
 	}
 }
 
+// The host is the same, but the API key would travel unencrypted.
+func TestSameHostRedirectsRefusesADowngradeToHTTP(t *testing.T) {
+	request := func(rawURL string) *http.Request {
+		t.Helper()
+		r, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	first := request("https://media.example/api")
+
+	if err := SameHostRedirects(request("http://media.example/api"), []*http.Request{first}); err == nil {
+		t.Error("a redirect from https to http on the same host must fail")
+	}
+	later := []*http.Request{first, request("https://media.example/moved")}
+	if err := SameHostRedirects(request("http://media.example/api"), later); err == nil {
+		t.Error("a later redirect from https to http must fail too")
+	}
+	if err := SameHostRedirects(request("https://media.example/moved"), []*http.Request{first}); err != nil {
+		t.Errorf("https to https on the same host: %v", err)
+	}
+	if err := SameHostRedirects(request("https://media.example/api"), []*http.Request{request("http://media.example/api")}); err != nil {
+		t.Errorf("an upgrade from http to https on the same host: %v", err)
+	}
+}
+
 func TestSameHostRedirectsStopsAfterTenRedirects(t *testing.T) {
 	a := serve(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/loop", http.StatusFound)

@@ -77,15 +77,19 @@ func ParseTime(s string) *time.Time {
 }
 
 // SameHostRedirects is an http.Client CheckRedirect policy that refuses to follow a redirect
-// to another host or port. removarr contacts only the apps configured in its settings (spec
-// section 10), and Go would otherwise forward a custom header such as X-Api-Key to wherever
-// a server redirects. It stops after 10 redirects, as Go's default policy does.
+// to another host or port, or from https to http. removarr contacts only the apps configured
+// in its settings (spec section 10), and Go would otherwise forward a custom header such as
+// X-Api-Key to wherever a server redirects, encrypted or not. It stops after 10 redirects,
+// as Go's default policy does.
 func SameHostRedirects(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
 	}
 	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
 		return fmt.Errorf("refusing to follow a redirect from %s to %s", via[0].URL.Host, req.URL.Host)
+	}
+	if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing to follow a redirect from https to %s on %s", req.URL.Scheme, req.URL.Host)
 	}
 	return nil
 }
