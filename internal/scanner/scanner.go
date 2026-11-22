@@ -253,8 +253,9 @@ func readFiles(ctx context.Context, client providers.DownloadClient, rules domai
 }
 
 // linkData returns the link data of every media manager that answered. With files given,
-// each manager's links are first extended by content (spec 6.6) and stored back into f, so
-// the list rules see the same links the index is built from.
+// each manager's links are first extended by content (spec 6.6) and stored back into f. The
+// list rules Movies and Series no longer read the links: the index is built from them, and
+// WholeTorrents and the torrent list use the index.
 func linkData(f *Fetched, files map[string][]domain.DownloadFile) []scan.ManagerFiles {
 	var managers []scan.ManagerFiles
 	if f.Movies.ok() {

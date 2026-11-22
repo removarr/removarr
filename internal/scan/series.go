@@ -14,7 +14,11 @@ type SeriesInput struct {
 	Users    []domain.User
 	Library  domain.Library
 	Snapshot domain.SeriesSnapshot
-	Ignored  map[string]bool // candidate keys the user has ignored
+	// Ignored holds the candidate keys the user has ignored. Today it only stops the per-season
+	// merge into one series row. Ignored rows are not removed here: whoever builds ignoring must
+	// take them out of Rows before WholeTorrents, or "an ignored row stays, so the group it
+	// belongs to waits" (spec 6.3) does not hold.
+	Ignored map[string]bool
 }
 
 type epKey struct{ season, number int }

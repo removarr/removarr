@@ -5,7 +5,7 @@ type ListSummary struct {
 	Candidates int    `json:"candidates"`
 	Protected  int    `json:"protected"`
 	Unmatched  int    `json:"unmatched"`
-	Waiting    int    `json:"waiting"`         // rows held back because a torrent they share also holds something that stays
+	Waiting    int    `json:"waiting"`         // rows held back because a torrent or a library file they share also holds something that stays
 	Error      string `json:"error,omitempty"` // set when the list could not be produced
 }
 

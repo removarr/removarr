@@ -23,6 +23,12 @@ type Row struct {
 // holds an item that no row of the group deletes. A blocked group waits and none of its rows
 // is listed. The rows of a group that does not wait are listed and tied to each other (spec
 // 6.3). Only downloads that are in the download client count for any of this.
+//
+// It assumes complete inputs. A download that is missing from downloads counts as gone from
+// the client: it neither ties, blocks nor is named. An index built without one of the media
+// managers, or from a ManagerFiles with an empty Manager, blocks nothing: files and items of
+// that manager are unknown to it. So the caller must pass the complete download list and an
+// index of every configured media manager.
 func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, lists ...*ListResult) {
 	inClient := downloadsByID(downloads)
 	present := func(id string) bool {
