@@ -38,7 +38,7 @@ func TestOpenCreatesAPrivateFileAndCanBeReopened(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetSetting(ctx, "k", "v"); err != nil {
+	if err := s.ApplySettings(ctx, map[string]string{"k": "v"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -66,23 +66,26 @@ func TestSettings(t *testing.T) {
 	if _, ok, err := s.GetSetting(ctx, "missing"); ok || err != nil {
 		t.Errorf("missing key: ok = %v, err = %v; want false, nil", ok, err)
 	}
-	if err := s.SetSetting(ctx, "a", "1"); err != nil {
+	if err := s.ApplySettings(ctx, map[string]string{"a": "1", "b": "x"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetSetting(ctx, "a", "2"); err != nil {
+	// One call can overwrite, add and remove.
+	if err := s.ApplySettings(ctx, map[string]string{"a": "2", "c": "y"}, []string{"b"}); err != nil {
 		t.Fatalf("overwriting: %v", err)
 	}
-	if v, ok, _ := s.GetSetting(ctx, "a"); !ok || v != "2" {
-		t.Errorf("a = %q, %v; want 2, true", v, ok)
+	for key, want := range map[string]string{"a": "2", "c": "y"} {
+		if v, ok, _ := s.GetSetting(ctx, key); !ok || v != want {
+			t.Errorf("%s = %q, %v; want %s, true", key, v, ok, want)
+		}
 	}
-	if err := s.DeleteSetting(ctx, "a"); err != nil {
-		t.Fatal(err)
+	if _, ok, _ := s.GetSetting(ctx, "b"); ok {
+		t.Error("b must be gone after it was removed")
 	}
-	if _, ok, _ := s.GetSetting(ctx, "a"); ok {
-		t.Error("a must be gone after delete")
+	if err := s.ApplySettings(ctx, nil, []string{"b"}); err != nil {
+		t.Errorf("removing a missing key must not fail: %v", err)
 	}
-	if err := s.DeleteSetting(ctx, "a"); err != nil {
-		t.Errorf("deleting a missing key must not fail: %v", err)
+	if err := s.ApplySettings(ctx, nil, nil); err != nil {
+		t.Errorf("an empty change must not fail: %v", err)
 	}
 }
 

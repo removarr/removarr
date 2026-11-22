@@ -19,8 +19,15 @@ func (m memStore) GetSetting(_ context.Context, k string) (string, bool, error) 
 	v, ok := m[k]
 	return v, ok, nil
 }
-func (m memStore) SetSetting(_ context.Context, k, v string) error { m[k] = v; return nil }
-func (m memStore) DeleteSetting(_ context.Context, k string) error { delete(m, k); return nil }
+func (m memStore) ApplySettings(_ context.Context, set map[string]string, remove []string) error {
+	for k, v := range set {
+		m[k] = v
+	}
+	for _, k := range remove {
+		delete(m, k)
+	}
+	return nil
+}
 
 func field(t *testing.T, app, name string) Field {
 	t.Helper()

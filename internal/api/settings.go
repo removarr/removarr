@@ -46,7 +46,7 @@ type settingsRequest struct {
 	Connections map[string]map[string]*string `json:"connections"`
 }
 
-// putSettings validates the whole request before saving any of it.
+// putSettings validates the whole request before saving any of it, and saves it as one step.
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req settingsRequest
@@ -56,6 +56,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "the request body is not valid: "+err.Error())
 		return
 	}
+
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
 
 	var rules *domain.Rules
 	if len(req.Rules) > 0 && string(req.Rules) != "null" {
@@ -83,11 +86,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		rules = &merged
 	}
 
-	type change struct {
-		field config.Field
-		value string
-	}
-	var changes []change
+	var changes []config.ConnChange
 	for app, fields := range req.Connections {
 		for name, value := range fields {
 			field, ok := config.FieldFor(app, name)
@@ -106,21 +105,13 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 				s.fail(w, err)
 				return
 			}
-			changes = append(changes, change{field: field, value: v})
+			changes = append(changes, config.ConnChange{Field: field, Value: v})
 		}
 	}
 
-	if rules != nil {
-		if err := s.Config.SetRules(ctx, *rules); err != nil {
-			s.fail(w, err)
-			return
-		}
-	}
-	for _, c := range changes {
-		if err := s.Config.SetConn(ctx, c.field, c.value); err != nil {
-			s.fail(w, err)
-			return
-		}
+	if err := s.Config.Apply(ctx, rules, changes); err != nil {
+		s.fail(w, err)
+		return
 	}
 	s.getSettings(w, r)
 }

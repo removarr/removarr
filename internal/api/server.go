@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"sync"
 
 	"github.com/removarr/removarr/internal/config"
 	"github.com/removarr/removarr/internal/domain"
@@ -45,6 +46,11 @@ type Server struct {
 	Scanner Scanner
 	Apps    Apps
 	Log     *slog.Logger
+
+	// settingsMu lets one settings change run at a time. A change reads the saved rules,
+	// merges the request into them and saves the result, so two requests that each change
+	// one rule must not work from the same saved copy.
+	settingsMu sync.Mutex
 }
 
 // Handler returns the API's routes behind the request guard.

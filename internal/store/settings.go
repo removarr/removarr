@@ -18,16 +18,27 @@ func (s *Store) GetSetting(ctx context.Context, key string) (value string, ok bo
 	return value, true, nil
 }
 
-// SetSetting stores value under key, replacing any earlier value.
-func (s *Store) SetSetting(ctx context.Context, key, value string) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		key, value)
-	return err
-}
+// ApplySettings stores every value in set, replacing earlier values, and removes every key
+// in remove, in one transaction: either all of it happens or none of it. Removing a key
+// that does not exist is not an error.
+func (s *Store) ApplySettings(ctx context.Context, set map[string]string, remove []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 
-// DeleteSetting removes key. Removing a key that does not exist is not an error.
-func (s *Store) DeleteSetting(ctx context.Context, key string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM settings WHERE key = ?`, key)
-	return err
+	for key, value := range set {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+			key, value); err != nil {
+			return err
+		}
+	}
+	for _, key := range remove {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key = ?`, key); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

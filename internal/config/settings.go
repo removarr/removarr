@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/removarr/removarr/internal/domain"
 )
@@ -17,8 +18,8 @@ const (
 // SettingsStore is the persistence the service needs. *store.Store satisfies it.
 type SettingsStore interface {
 	GetSetting(ctx context.Context, key string) (value string, ok bool, err error)
-	SetSetting(ctx context.Context, key, value string) error
-	DeleteSetting(ctx context.Context, key string) error
+	// ApplySettings stores and removes several settings as one step: all of it or none.
+	ApplySettings(ctx context.Context, set map[string]string, remove []string) error
 }
 
 // Source says where a connection value comes from.
@@ -34,6 +35,10 @@ const (
 type Service struct {
 	env   Env
 	store SettingsStore
+	// mu makes a change of several settings appear at once. Apply holds it for writing, and
+	// a read of more than one setting holds it for reading. Without it a scan could read an
+	// app's new URL together with its old API key, and send that key to the new address.
+	mu sync.RWMutex
 }
 
 // NewService returns a Service over the environment and the saved settings.
@@ -75,17 +80,50 @@ func CheckConn(f Field, value string) (string, error) {
 	return normalized, nil
 }
 
+// ConnChange is a new value for one connection field. An empty value clears the saved
+// value, so the environment variable applies again.
+type ConnChange struct {
+	Field Field
+	Value string
+}
+
+// Apply saves new rules and new connection values as one step: either all of them are
+// stored or none, and no reader sees only some of them. rules may be nil. Everything is
+// validated before anything is saved.
+func (s *Service) Apply(ctx context.Context, rules *domain.Rules, conns []ConnChange) error {
+	set := map[string]string{}
+	var remove []string
+	if rules != nil {
+		r := withLists(*rules)
+		if err := r.Validate(); err != nil {
+			return err
+		}
+		raw, err := json.Marshal(r)
+		if err != nil {
+			return err
+		}
+		set[rulesKey] = string(raw)
+	}
+	for _, c := range conns {
+		v, err := CheckConn(c.Field, c.Value)
+		if err != nil {
+			return err
+		}
+		if v == "" {
+			remove = append(remove, connPrefix+c.Field.Key)
+		} else {
+			set[connPrefix+c.Field.Key] = v
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.store.ApplySettings(ctx, set, remove)
+}
+
 // SetConn saves a connection field. An empty value clears the saved value, so the
 // environment variable applies again.
 func (s *Service) SetConn(ctx context.Context, f Field, value string) error {
-	v, err := CheckConn(f, value)
-	if err != nil {
-		return err
-	}
-	if v == "" {
-		return s.store.DeleteSetting(ctx, connPrefix+f.Key)
-	}
-	return s.store.SetSetting(ctx, connPrefix+f.Key, v)
+	return s.Apply(ctx, nil, []ConnChange{{Field: f, Value: value}})
 }
 
 // FieldView describes one connection field for the settings page.
@@ -98,6 +136,8 @@ type FieldView struct {
 // ConnView describes every connection field, keyed by app and field name, without
 // revealing secrets.
 func (s *Service) ConnView(ctx context.Context) (map[string]map[string]FieldView, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	out := map[string]map[string]FieldView{}
 	for _, f := range Fields {
 		v, source, err := s.Conn(ctx, f.Key)
@@ -128,6 +168,8 @@ type AppConn struct {
 // field is missing: the URL, and the API key for every app except qBittorrent, which can
 // allow access without a login.
 func (s *Service) App(ctx context.Context, app string) (AppConn, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var c AppConn
 	for _, f := range Fields {
 		if f.App != app {
@@ -167,15 +209,7 @@ func (s *Service) Rules(ctx context.Context) (domain.Rules, error) {
 
 // SetRules validates and saves the rules.
 func (s *Service) SetRules(ctx context.Context, r domain.Rules) error {
-	r = withLists(r)
-	if err := r.Validate(); err != nil {
-		return err
-	}
-	raw, err := json.Marshal(r)
-	if err != nil {
-		return err
-	}
-	return s.store.SetSetting(ctx, rulesKey, string(raw))
+	return s.Apply(ctx, &r, nil)
 }
 
 // withLists replaces nil lists with empty ones so they serialise as [] and not null.
