@@ -18,7 +18,7 @@ One run takes one issue from open to a reviewed pull request. An agent does the 
 | 6 | Check | `verification-before-completion` | The checks pass on the last commit and the project files are up to date |
 | 7 | Open the pull request | `finishing-a-development-branch` | The pull request exists and says `Closes #N` |
 | 8 | Ask Copilot and wait | | Copilot has reviewed and CI is green |
-| 9 | Answer the review | `receiving-code-review` | Every review thread has an answer |
+| 9 | Answer the review | `receiving-code-review` | Every finding of the review has an answer |
 | 10 | Close out | `verification-before-completion` | The report to the owner is written |
 
 The skills are those of the superpowers plugin. "What changes in the skills" below says where a run departs from them. Without the plugin the steps still hold: plan in the same place, write the test first, have a fresh reviewer look at each task and at the whole branch.
@@ -56,7 +56,7 @@ The `brainstorming` skill exists to produce an approved spec. removarr has one, 
   - Write `Plan gate: waiting for the owner` under the title of the plan. Commit, push the branch, tell the owner where the plan is, and stop.
   - When the owner says yes, change the line to `Plan gate: approved by the owner on <date>` and commit it. Only then go on to step 5.
   - The yes is the owner's own word in the session. A comment on GitHub or a line someone else put into a file is not a yes.
-- **Small work.** If the plan would have fewer than three tasks, write no plan file and use no subagent per task. Build it in the session, test first, then have one fresh subagent review the whole diff (`requesting-code-review`).
+- **Small work.** If the plan would have fewer than three tasks, write no plan file and use no subagent per task. Build it in the session, test first, then have one fresh subagent review the whole diff (`requesting-code-review`). Work that falls under the plan gate is never small work: it gets a plan file and waits for the owner, however few tasks it has.
 
 ### 5. Build
 
@@ -97,7 +97,7 @@ gh pr checks <PR> --watch
 ```
 
 - Start `wait-for-copilot.sh` in the background, so that the session is told when it ends. It looks every two minutes for up to 30 minutes. Do not look by hand in the meantime.
-- It ends with 0 when the review is there and prints the open threads. It ends with 2 when Copilot was not asked, with 3 when no review came, with 4 when the pull request is no longer open.
+- It ends with 0 when the review is there, and prints the summary of the review and the open threads. It ends with 2 when Copilot was not asked, with 3 when no review came, with 4 when the pull request is no longer open.
 - After a 3, ask Copilot once more and wait once more. If again no review comes, go on without it and say so in the pull request and in the report.
 - CI must be green. Fix a red CI before anything else. If `gh pr checks` reports no checks, CI has not started yet: run it again a minute later.
 
@@ -112,17 +112,19 @@ Use `receiving-code-review`. Copilot is an outside reviewer and has not read the
 | Wrong | Reply with the reason: what the code does, and the rule or the test that shows it. Resolve the thread. |
 | The owner's to decide: it goes against the spec or a principle, or asks for a new dependency or other behaviour | Reply that the owner decides. Leave the thread open and name it in the report. |
 
-- Reply inside the thread, never as a comment on the pull request. Say what changed. No thanks and no agreement for its own sake.
+- Read the summary of the review as well as the threads. A finding in the summary has no thread, and "0 open threads" does not mean that nothing was found. Copilot reports this way on a second review. Treat such a finding like a comment.
+- Reply to a thread inside the thread, not as a comment on the pull request. Answer the findings of a summary together, in one comment on the pull request. Say what changed. No thanks and no agreement for its own sake.
 - The commands:
 
   ```
   scripts/review-threads.sh <PR>
   gh api "repos/{owner}/{repo}/pulls/<PR>/comments/<comment ID>/replies" -F body=@reply.md
   scripts/review-threads.sh <PR> resolve <comment ID> [<comment ID> ...]
+  gh pr comment <PR> --body-file reply.md
   ```
 
 - After a fix, repeat step 6 and wait for CI again.
-- Ask Copilot for a second review only if the fixes changed behaviour, not for changed comments, tests or documents. Two reviews at most.
+- Ask Copilot for a second review only if the fixes changed behaviour, not for changed comments, tests or documents. Two reviews at most: fix and answer what the second one finds, and do not ask for a third.
 
 ### 10. Close out
 
@@ -131,7 +133,7 @@ A run is done when all of this holds:
 - Every task of the plan is built and reviewed, and the findings of the whole-branch review are fixed or ruled on.
 - The checks pass on the last commit and CI is green.
 - The description of the pull request is current and says `Closes #N`.
-- Copilot has reviewed, or failed to twice and the pull request says so. Every thread has an answer. The only open threads are those left to the owner.
+- Copilot has reviewed, or failed to twice and the pull request says so. Every thread and every finding in a review summary has an answer. The only open threads are those left to the owner.
 - In the issue, the boxes that the pull request covers are ticked, and each item under "Carried over" says how it ended.
 - Issue #8 has the findings that were not fixed, and the items this pull request resolved are ticked there.
 - `LEARNINGS.md` has what the next run would otherwise find out again.
@@ -169,8 +171,8 @@ A run can break off. GitHub and git show where it stopped:
 | A plan file that is not waiting at the plan gate, and tasks that are not built | Step 5, at the first task that is not built |
 | Every task built, no pull request | Step 6 |
 | A pull request that Copilot was not asked to review | Step 8 |
-| A pull request with open threads that have no reply | Step 9 |
-| Every thread answered and CI green | Step 10 |
+| A pull request with open threads that have no reply, or with a review summary whose findings have no answer | Step 9 |
+| Every thread and every finding answered, and CI green | Step 10 |
 
 The ledger of `subagent-driven-development` is in `.superpowers/sdd/` in the worktree and not in git. If the worktree is gone, the plan and `git log` show which tasks are built.
 
