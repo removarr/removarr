@@ -32,6 +32,7 @@ type LinkIndex struct {
 	source  map[ref]string   // current library file -> the download it was imported from
 	backs   map[string][]ref // download ID -> the current library files imported from it
 	grabbed map[ref][]string // media item -> the downloads associated with it
+	holds   map[ref][]int    // current library file -> the items it holds, in its manager
 }
 
 // NewLinkIndex builds the index from every media manager that answered.
@@ -44,6 +45,7 @@ func NewLinkIndex(managers ...ManagerFiles) *LinkIndex {
 		source:  map[ref]string{},
 		backs:   map[string][]ref{},
 		grabbed: map[ref][]string{},
+		holds:   map[ref][]int{},
 	}
 	for _, m := range managers {
 		for id := range m.Links.Queue {
@@ -67,6 +69,7 @@ func NewLinkIndex(managers ...ManagerFiles) *LinkIndex {
 				continue
 			}
 			seen[file.ID] = true
+			x.holds[ref{m.Manager, file.ID}] = file.Items
 			if id := m.Links.FileSource[file.ID]; id != "" {
 				x.backing[id]++
 				x.bytes[id] += file.Size

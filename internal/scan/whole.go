@@ -17,11 +17,12 @@ type Row struct {
 // WholeTorrents applies the whole-torrent rule to the rows of the watched lists. It fills
 // Candidates and Waiting of each list from its Rows.
 //
-// Rows whose files are backed by the same torrent form a group, directly or through a chain
-// of torrents. A torrent blocks its group when it is queued or backs a library file that no
-// row of the group deletes; a blocked group waits and none of its rows is listed. The rows
-// of a group that does not wait are listed and tied to each other (spec 6.3). Only downloads
-// that are in the download client count for any of this.
+// Rows whose files are backed by the same torrent, or that delete the same library file,
+// form a group, directly or through a chain. A torrent blocks its group when it is queued
+// or backs a library file that no row of the group deletes; a file blocks its group when it
+// holds an item that no row of the group deletes. A blocked group waits and none of its rows
+// is listed. The rows of a group that does not wait are listed and tied to each other (spec
+// 6.3). Only downloads that are in the download client count for any of this.
 func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, lists ...*ListResult) {
 	inClient := downloadsByID(downloads)
 	present := func(id string) bool {
@@ -41,7 +42,8 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 		}
 	}
 
-	// Group the rows through the downloads that back their files.
+	// Group the rows through the downloads that back their files and through the files
+	// themselves.
 	parent := make([]int, len(rows))
 	for i := range parent {
 		parent[i] = i
@@ -54,9 +56,16 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 		return parent[i]
 	}
 	firstRow := map[string]int{} // download ID -> the first row it backs a file of
+	fileRow := map[ref]int{}     // library file -> the first row that deletes it
 	for i, e := range rows {
 		for _, file := range e.row.FileIDs {
-			id := x.source[ref{e.row.Manager, file}]
+			f := ref{e.row.Manager, file}
+			if j, ok := fileRow[f]; ok {
+				parent[find(i)] = find(j)
+			} else {
+				fileRow[f] = i
+			}
+			id := x.source[f]
 			if !present(id) {
 				continue
 			}
@@ -74,10 +83,14 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 	}
 
 	for _, group := range groups {
-		deleted := map[ref]bool{}
+		deleted := map[ref]bool{}      // the library files the group deletes
+		deletedItems := map[ref]bool{} // the movies and episodes the group deletes
 		for _, i := range group {
 			for _, file := range rows[i].row.FileIDs {
 				deleted[ref{rows[i].row.Manager, file}] = true
+			}
+			for _, item := range rows[i].row.ItemIDs {
+				deletedItems[ref{rows[i].row.Manager, item}] = true
 			}
 		}
 		// stays reports whether a download outlives the group's deletion: it is queued, or it
@@ -96,9 +109,16 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 
 		waits := false
 		for _, i := range group {
+			manager := rows[i].row.Manager
 			for _, file := range rows[i].row.FileIDs {
-				if id := x.source[ref{rows[i].row.Manager, file}]; present(id) && stays(id) {
+				if id := x.source[ref{manager, file}]; present(id) && stays(id) {
 					waits = true
+				}
+				// A file goes as a whole: it may not take an item with it that stays.
+				for _, item := range x.holds[ref{manager, file}] {
+					if !deletedItems[ref{manager, item}] {
+						waits = true
+					}
 				}
 			}
 		}

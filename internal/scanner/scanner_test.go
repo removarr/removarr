@@ -677,7 +677,7 @@ func expectWaiting(t *testing.T, summary domain.ScanSummary, candidates []domain
 		t.Errorf("series list = %+v, want one row waiting and none listed", got)
 	}
 	if _, found := rowsByKey(candidates)[key]; found {
-		t.Errorf("row %s is listed although its pack backs a file that stays", key)
+		t.Errorf("row %s is listed although it shares a torrent or a file with something that stays", key)
 	}
 }
 
@@ -740,11 +740,11 @@ func TestComputeTiesRowsAcrossTheTwoLists(t *testing.T) {
 	}
 }
 
-// The episodes of one file are normally in one season, so every row that deletes the file
-// holds all of them. This file spans two seasons, so the season 2 row holds only the file's
-// second episode: the torrent goes with that row only if content associates it with that
-// episode too.
-func TestComputeAssociatesEveryEpisodeOfASharedFileByContent(t *testing.T) {
+// The episodes of one file are normally in one season. This file spans two seasons, and
+// only season 2 is watched: deleting the season 2 row's files would remove the unwatched
+// episode of season 1 with it, so the row waits (spec 6.3). That every episode of a shared
+// file is listed with it is pinned by the unit tests of scan.EpisodeFiles.
+func TestComputeHoldsBackASeasonWhoseFileHoldsAnEpisodeThatStays(t *testing.T) {
 	shared := &domain.MediaFile{ID: 30, Size: 900 * mb}
 	f := Fetched{
 		Users: []domain.User{{ID: "a", Name: "Alice"}},
@@ -770,7 +770,8 @@ func TestComputeAssociatesEveryEpisodeOfASharedFileByContent(t *testing.T) {
 	}
 	r := withUser()
 	r.SeriesUnit = domain.UnitSeason
-	_, candidates := Compute(r, now, f)
+	summary, candidates := Compute(r, now, f)
 
-	expectRow(t, candidates, domain.SeasonKey("100", 2), "double")
+	expectWaiting(t, summary, candidates, domain.SeasonKey("100", 2))
+	expectNoTorrentRows(t, summary, candidates)
 }

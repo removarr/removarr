@@ -33,6 +33,11 @@ func libFiles(ids ...int) []LibraryFile {
 	return out
 }
 
+// held is a library file of 100 bytes that holds the given items.
+func held(id int, items ...int) LibraryFile {
+	return LibraryFile{ID: id, Size: 100, Items: items}
+}
+
 // movieRow is a movie row that deletes movie item and its file.
 func movieRow(key string, item, file int) Row {
 	return Row{
@@ -338,6 +343,70 @@ func TestWholeTorrents(t *testing.T) {
 			wantSeries: []listedRow{
 				{key: "tvdb:100:s1", torrents: []string{"x"}, tied: []string{"movies/tmdb:1", "movies/tmdb:2"}},
 			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { runWhole(t, tt) })
+	}
+}
+
+// A library file goes as a whole too: rows that delete the same file belong to one group,
+// and a file that holds an item no row of the group deletes holds the group back (spec 6.3).
+func TestWholeFiles(t *testing.T) {
+	tests := []wholeCase{
+		{
+			name:          "1a. a file that also holds an episode of a season that does not qualify holds the row back",
+			series:        ManagerFiles{Links: links(), Files: []LibraryFile{held(30, 1, 2)}},
+			seriesRows:    []Row{seasonRow(2, []int{2}, []int{30})},
+			waitingSeries: 1,
+		},
+		{
+			name:          "1b. the same with a torrent backing the file",
+			series:        ManagerFiles{Links: link(nil, map[int]string{30: "x"}), Files: []LibraryFile{held(30, 1, 2)}},
+			downloads:     []string{"x"},
+			seriesRows:    []Row{seasonRow(2, []int{2}, []int{30})},
+			waitingSeries: 1,
+		},
+		{
+			name:       "2. two qualifying seasons that share a file and no torrent are tied",
+			series:     ManagerFiles{Links: links(), Files: []LibraryFile{held(30, 1, 2)}},
+			seriesRows: []Row{seasonRow(1, []int{1}, []int{30}), seasonRow(2, []int{2}, []int{30})},
+			wantSeries: []listedRow{
+				{key: "tvdb:100:s1", tied: []string{"series/tvdb:100:s2"}},
+				{key: "tvdb:100:s2", tied: []string{"series/tvdb:100:s1"}},
+			},
+		},
+		{
+			name:          "3a. a still-airing series whose regular file also holds a special waits",
+			series:        ManagerFiles{Links: links(), Files: []LibraryFile{held(11, 11), held(12, 12, 1)}},
+			seriesRows:    []Row{seriesRow([]int{11, 12}, []int{11, 12})},
+			waitingSeries: 1,
+		},
+		{
+			name:       "3b. the same series ended is listed",
+			series:     ManagerFiles{Links: links(), Files: []LibraryFile{held(11, 11), held(12, 12, 1)}},
+			seriesRows: []Row{seriesRow([]int{1, 11, 12}, []int{11, 12})},
+			wantSeries: []listedRow{{key: "tvdb:100"}},
+		},
+		{
+			name:       "4a. equal file numbers in the two managers do not tie",
+			movies:     ManagerFiles{Links: links(), Files: []LibraryFile{held(10, 1)}},
+			series:     ManagerFiles{Links: links(), Files: []LibraryFile{held(10, 1)}},
+			movieRows:  []Row{movieRow("tmdb:1", 1, 10)},
+			seriesRows: []Row{seasonRow(1, []int{1}, []int{10})},
+			wantMovies: []listedRow{{key: "tmdb:1"}},
+			wantSeries: []listedRow{{key: "tvdb:100:s1"}},
+		},
+		{
+			name: "4b. a movie with the number of an episode that stays does not stand in for it",
+			// One torrent ties movie 2 to the season; the season's file also holds episode 2.
+			movies:        ManagerFiles{Links: link(nil, map[int]string{20: "x"}), Files: []LibraryFile{held(20, 2)}},
+			series:        ManagerFiles{Links: link(nil, map[int]string{10: "x"}), Files: []LibraryFile{held(10, 1, 2)}},
+			downloads:     []string{"x"},
+			movieRows:     []Row{movieRow("tmdb:2", 2, 20)},
+			seriesRows:    []Row{seasonRow(1, []int{1}, []int{10})},
+			waitingMovies: 1,
+			waitingSeries: 1,
 		},
 	}
 	for _, tt := range tests {
