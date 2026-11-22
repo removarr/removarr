@@ -1,0 +1,9 @@
+/removarr
+/dist/
+/config/
+*.db
+*.db-wal
+*.db-shm
+.env
+.remember/
+.DS_Store
