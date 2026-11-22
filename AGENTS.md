@@ -29,16 +29,23 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 
 ## Commands
 
+The checks. All of them must pass:
+
 ```
 gofmt -l .        # must print nothing
 go vet ./...
 go test ./...
 go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/
 go build ./...
-REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
 ```
 
 CI runs `go vet` and `go test` on every pull request.
+
+To start the server from the source tree. It runs until it is stopped, so it is not a check:
+
+```
+REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
+```
 
 ## Rules for the code
 
@@ -68,7 +75,7 @@ CI runs `go vet` and `go test` on every pull request.
 
 - Branch from `main`. Never push to `main` and never force-push. One pull request per work package.
 - Commit subject: `type: what changed`, in lower case, with one of `feat`, `fix`, `docs`, `test`, `chore`. The body says why.
-- Before a pull request: `gofmt`, `go vet` and the tests pass, and `CHANGELOG.md` is updated.
+- Before a pull request: the checks pass and `CHANGELOG.md` is updated.
 
 ## Files to keep up to date
 

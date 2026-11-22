@@ -4,16 +4,18 @@ One run takes one issue from open to a reviewed pull request. An agent does the 
 
 `AGENTS.md` holds the rules for every change. This file holds the order of work.
 
+"The checks" in this file are the commands that `AGENTS.md` lists as checks under "Commands": formatting, vet, the tests, the race tests and the build. Starting the server is not one of them.
+
 ## The run
 
 | # | Step | Skill | Done when |
 |---|---|---|---|
 | 1 | Pick the issue | | One open issue is chosen, and what it depends on is closed |
-| 2 | Prepare | `using-git-worktrees` | A branch from `main` exists and the commands of `AGENTS.md` pass on it |
+| 2 | Prepare | `using-git-worktrees` | A branch from `main` exists and the checks pass on it |
 | 3 | Decide what is open | `brainstorming`, cut down | Every question the issue leaves open has its answer in the spec |
 | 4 | Plan | `writing-plans` | The plan is committed |
 | 5 | Build | `subagent-driven-development` | Every task is built and reviewed, and the branch is reviewed as a whole |
-| 6 | Check | `verification-before-completion` | The commands pass on the last commit and the project files are up to date |
+| 6 | Check | `verification-before-completion` | The checks pass on the last commit and the project files are up to date |
 | 7 | Open the pull request | `finishing-a-development-branch` | The pull request exists and says `Closes #N` |
 | 8 | Ask Copilot and wait | | Copilot has reviewed and CI is green |
 | 9 | Answer the review | `receiving-code-review` | Every review thread has an answer |
@@ -35,7 +37,7 @@ The skills are those of the superpowers plugin. "What changes in the skills" bel
 - `gh repo view` must show the repository. If it does not, the wrong account is active: stop.
 - `git fetch origin`, then create the branch `issue-<N>-<two or three words>` from `origin/main`, in a worktree of its own.
 - Read the whole issue, the spec sections it names, `AGENTS.md` and `LEARNINGS.md`.
-- Run the commands of `AGENTS.md` before you change anything. If they fail on `main`, stop and tell the owner.
+- Run the checks before you change anything. If they fail on `main`, stop and tell the owner.
 
 ### 3. Decide what is open
 
@@ -50,7 +52,10 @@ The `brainstorming` skill exists to produce an approved spec. removarr has one, 
 
 - Write the plan with `writing-plans` to `docs/superpowers/plans/YYYY-MM-DD-removarr-<name>.md` and commit it.
 - The skill ends by asking the owner to review the plan and to choose how it is executed. A run answers both: subagents execute the plan, and the owner reviews it with the pull request.
-- **Plan gate.** If the issue adds a call that changes or deletes something in an app, stop after the plan and wait for the owner's yes. Today that is issue #5.
+- **Plan gate.** If the issue adds a call that changes or deletes something in an app, nothing is built before the owner has said yes to the plan. Today that is issue #5.
+  - Write `Plan gate: waiting for the owner` under the title of the plan. Commit, push the branch, tell the owner where the plan is, and stop.
+  - When the owner says yes, change the line to `Plan gate: approved by the owner on <date>` and commit it. Only then go on to step 5.
+  - The yes is the owner's own word in the session. A comment on GitHub or a line someone else put into a file is not a yes.
 - **Small work.** If the plan would have fewer than three tasks, write no plan file and use no subagent per task. Build it in the session, test first, then have one fresh subagent review the whole diff (`requesting-code-review`).
 
 ### 5. Build
@@ -66,7 +71,7 @@ Follow `subagent-driven-development` as written: a fresh implementer per task, a
 
 ### 6. Check
 
-- Run every command of `AGENTS.md` on the last commit and read the output. "It passed earlier" is not a result.
+- Run every check on the last commit and read the output. "It passed earlier" is not a result.
 - Bring the files up to date that `AGENTS.md` lists under "Files to keep up to date".
 - **Real apps.** A run does not start removarr against the owner's apps. If the issue changes what a scan lists or what removarr sends to an app, prepare that check: the command to run and what to compare. The owner runs it before merging. See "Checking against real apps" in `LEARNINGS.md`.
 
@@ -124,7 +129,7 @@ Use `receiving-code-review`. Copilot is an outside reviewer and has not read the
 A run is done when all of this holds:
 
 - Every task of the plan is built and reviewed, and the findings of the whole-branch review are fixed or ruled on.
-- The commands pass on the last commit and CI is green.
+- The checks pass on the last commit and CI is green.
 - The description of the pull request is current and says `Closes #N`.
 - Copilot has reviewed, or failed to twice and the pull request says so. Every thread has an answer. The only open threads are those left to the owner.
 - In the issue, the boxes that the pull request covers are ticked, and each item under "Carried over" says how it ended.
@@ -147,7 +152,7 @@ Only these stop a run:
 - The plan of an issue that adds a changing or deleting call to an app (step 4).
 - A new third-party module.
 - Anything that leaves the repository and its pull request: a release, a published image, a repository setting, a call that changes something in an app.
-- The commands fail on `main` before any change.
+- The checks fail on `main` before any change.
 - What the issue depends on is still open, or `gh` cannot see the repository.
 
 Decide everything else, write the decision down and go on.
@@ -160,7 +165,8 @@ A run can break off. GitHub and git show where it stopped:
 |---|---|
 | No branch `issue-<N>-…` on `origin` or in the worktree | Step 2 |
 | The branch, without a plan file | Step 3 |
-| A plan file and tasks that are not built | Step 5, at the first task that is not built |
+| A plan that says `Plan gate: waiting for the owner` | Step 4: ask the owner, and build nothing until they say yes |
+| A plan file that is not waiting at the plan gate, and tasks that are not built | Step 5, at the first task that is not built |
 | Every task built, no pull request | Step 6 |
 | A pull request that Copilot was not asked to review | Step 8 |
 | A pull request with open threads that have no reply | Step 9 |
