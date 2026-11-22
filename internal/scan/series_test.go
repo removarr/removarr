@@ -307,6 +307,35 @@ func TestSeriesEpisodeRangeCountsOnlyWhereSonarrHoldsOneFile(t *testing.T) {
 	}
 }
 
+func TestSeriesEpisodeRangeDoesNotApplyThroughANumberSonarrListsTwice(t *testing.T) {
+	// Sonarr lists S1E1 twice, in files 10 and 20; S1E2 is in file 20. Whichever entry comes
+	// first, the file of S1E1 is not known, so the range does not reach S1E2.
+	orders := map[string][]domain.Episode{
+		"file 10 first": {ep(11, 1, 1, 10), ep(13, 1, 1, 20), ep(12, 1, 2, 20), ep(21, 2, 1, 21)},
+		"file 20 first": {ep(13, 1, 1, 20), ep(11, 1, 1, 10), ep(12, 1, 2, 20), ep(21, 2, 1, 21)},
+	}
+	for name, eps := range orders {
+		t.Run(name, func(t *testing.T) {
+			items := []domain.ServerEpisode{rangeEp(1, 1, 2, seen), sep(2, 1, seen)}
+			res := Series(seriesInput(show(true, eps...), items, perSeason))
+			if got := keysOf(res.Candidates); !reflect.DeepEqual(got, []string{"tvdb:100:s2"}) {
+				t.Errorf("rows = %v, want [tvdb:100:s2]", got)
+			}
+			if res.Unmatched != 1 {
+				t.Errorf("Unmatched = %d, want 1", res.Unmatched)
+			}
+		})
+	}
+	t.Run("same file listed twice is not ambiguous", func(t *testing.T) {
+		eps := []domain.Episode{ep(11, 1, 1, 10), ep(13, 1, 1, 10), ep(12, 1, 2, 10), ep(21, 2, 1, 21)}
+		items := []domain.ServerEpisode{rangeEp(1, 1, 2, seen), sep(2, 1, seen)}
+		res := Series(seriesInput(show(true, eps...), items, perSeason))
+		if got := keysOf(res.Candidates); !reflect.DeepEqual(got, []string{"tvdb:100"}) || res.Unmatched != 0 {
+			t.Errorf("rows = %v, Unmatched = %d; want [tvdb:100] and 0", got, res.Unmatched)
+		}
+	})
+}
+
 func TestSeriesEpisodeRangeCostDoesNotGrowWithItsLength(t *testing.T) {
 	allocs := func(last int) float64 {
 		lib := domain.Library{Episodes: []domain.ServerEpisode{rangeEp(1, 1, last, seen)}}

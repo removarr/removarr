@@ -121,13 +121,25 @@ func Series(in SeriesInput) ListResult {
 	return res
 }
 
-// fileIDsOf maps each episode of a managed series that has a file to that file's ID.
+// fileIDsOf maps each episode of a managed series that has a file to that file's ID. A
+// (season, number) listed with two different files is left out: its file is not known.
 func fileIDsOf(s domain.Series) map[epKey]int {
 	out := map[epKey]int{}
+	ambiguous := map[epKey]bool{}
 	for _, e := range s.Episodes {
-		if e.File != nil {
-			out[epKey{e.Season, e.Number}] = e.File.ID
+		if e.File == nil {
+			continue
 		}
+		k := epKey{e.Season, e.Number}
+		if ambiguous[k] {
+			continue
+		}
+		if id, ok := out[k]; ok && id != e.File.ID {
+			delete(out, k)
+			ambiguous[k] = true
+			continue
+		}
+		out[k] = e.File.ID
 	}
 	return out
 }
