@@ -201,8 +201,13 @@ func (b rowBuilder) seasonRow(s domain.Series, a *seasonAgg) Row {
 func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, itemIDs []int) Row {
 	var size int64
 	var fileIDs []int
+	counted := map[int]bool{} // a file can hold episodes of two seasons
 	for _, a := range deleted {
 		for id, bytes := range a.files {
+			if counted[id] {
+				continue
+			}
+			counted[id] = true
 			size += bytes
 			fileIDs = append(fileIDs, id)
 		}

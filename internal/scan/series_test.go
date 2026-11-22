@@ -519,6 +519,23 @@ func TestSeriesRowsSayWhatDeleteTouches(t *testing.T) {
 	}
 }
 
+// A file that holds the last episode of season 1 and the first of season 2 is one file: a
+// series row that deletes both seasons lists it once and counts its size once (spec 6.9).
+func TestSeriesRowCountsAFileThatSpansTwoSeasonsOnce(t *testing.T) {
+	for _, ended := range []bool{true, false} {
+		s := show(ended, ep(11, 1, 1, 11), ep(12, 1, 2, 30), ep(21, 2, 1, 30))
+		res := Series(seriesInput(s, allSeen()))
+		if len(res.Rows) != 1 {
+			t.Fatalf("ended %v: got %d rows, want 1", ended, len(res.Rows))
+		}
+		row := res.Rows[0]
+		sort.Ints(row.FileIDs)
+		if !reflect.DeepEqual(row.FileIDs, []int{11, 30}) || row.Candidate.Size != 200 {
+			t.Errorf("ended %v: files %v, size %d; want [11 30] and 200", ended, row.FileIDs, row.Candidate.Size)
+		}
+	}
+}
+
 func TestSeriesWatchedByInAnyMode(t *testing.T) {
 	byA := map[string]domain.UserState{"a": played("2026-03-01T20:00:00Z")}
 	byB := map[string]domain.UserState{"b": played("2026-03-02T20:00:00Z")}
