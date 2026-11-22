@@ -41,9 +41,9 @@ events() {
 
 while :; do
   # A failed read is not an answer: try again until the time is up.
-  if state=$(gh pr view "$PR" --json state --jq .state) && log=$(events); then
-    if [ "$state" != OPEN ]; then
-      echo "pull request $PR is $state"
+  if state=$(gh api "repos/{owner}/{repo}/issues/$PR" --jq .state) && log=$(events); then
+    if [ "$state" != open ]; then
+      echo "pull request $PR is no longer open"
       exit 4
     fi
     log=$(printf '%s\n' "$log" | sort)
