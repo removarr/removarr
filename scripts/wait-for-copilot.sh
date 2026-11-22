@@ -22,6 +22,11 @@ INTERVAL="${INTERVAL:-120}"
 case "$PR" in '' | *[!0-9]*) echo "usage: wait-for-copilot.sh <pull request> [minutes]" >&2; exit 64 ;; esac
 case "$MINUTES" in '' | *[!0-9]*) echo "minutes must be a whole number" >&2; exit 64 ;; esac
 case "$INTERVAL" in '' | *[!0-9]*) echo "INTERVAL must be a whole number of seconds" >&2; exit 64 ;; esac
+# 10# reads "08" as eight; without it the shell takes a leading zero for octal.
+MINUTES=$((10#$MINUTES))
+INTERVAL=$((10#$INTERVAL))
+# An interval of zero would ask GitHub without a pause.
+if [ "$INTERVAL" -lt 1 ]; then echo "INTERVAL must be at least one second" >&2; exit 64; fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DEADLINE=$(($(date +%s) + MINUTES * 60))
@@ -69,9 +74,11 @@ while :; do
     echo "$(date +%H:%M) could not read pull request $PR" >&2
   fi
 
-  if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+  left=$((DEADLINE - $(date +%s)))
+  if [ "$left" -le 0 ]; then
     echo "no review from Copilot on pull request $PR within $MINUTES minutes"
     exit 3
   fi
-  sleep "$INTERVAL"
+  # Never sleep past the time given: the last look is at the end of it.
+  if [ "$left" -lt "$INTERVAL" ]; then sleep "$left"; else sleep "$INTERVAL"; fi
 done
