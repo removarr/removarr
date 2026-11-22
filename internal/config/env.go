@@ -59,6 +59,9 @@ type Env struct {
 	ConfigDir string
 	DryRun    bool
 	Conn      map[string]string // connection field key -> value, for the fields that are set
+	// AllowedHosts lists the host names removarr answers to besides IP addresses and
+	// localhost: lower case, without port (spec section 10).
+	AllowedHosts []string
 }
 
 // LoadEnv reads the environment through getenv. Errors name the offending variable.
@@ -81,6 +84,16 @@ func LoadEnv(getenv func(string) string) (Env, error) {
 			return Env{}, fmt.Errorf("REMOVARR_DRY_RUN: %q is not true or false", v)
 		}
 		env.DryRun = dry
+	}
+	for _, entry := range strings.Split(getenv("REMOVARR_ALLOWED_HOSTS"), ",") {
+		name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(entry)), ".")
+		if name == "" {
+			continue
+		}
+		if strings.ContainsAny(name, "/: \t") {
+			return Env{}, fmt.Errorf("REMOVARR_ALLOWED_HOSTS: %q is not a host name; list names without scheme, port or path", name)
+		}
+		env.AllowedHosts = append(env.AllowedHosts, name)
 	}
 	for _, f := range Fields {
 		v := getenv(f.Env)

@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request.
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -407,6 +407,7 @@ One SQLite file in the config directory.
 | `REMOVARR_PORT` | `7272` | Port the web server listens on. |
 | `REMOVARR_CONFIG_DIR` | `/config` | Directory holding the SQLite file. |
 | `REMOVARR_DRY_RUN` | `false` | See 6.8, rule 6. |
+| `REMOVARR_ALLOWED_HOSTS` | none | Host names removarr answers to, besides IP addresses and `localhost`. Separated by commas. See section 10. |
 | `REMOVARR_JELLYFIN_URL`, `REMOVARR_JELLYFIN_API_KEY` | none | Jellyfin connection. |
 | `REMOVARR_SONARR_URL`, `REMOVARR_SONARR_API_KEY` | none | Sonarr connection. |
 | `REMOVARR_RADARR_URL`, `REMOVARR_RADARR_API_KEY` | none | Radarr connection. |
@@ -417,7 +418,7 @@ One SQLite file in the config directory.
 - For each connection field, a value saved in the UI wins. If none is saved, the environment variable is used. If neither exists, the field is unset.
 - Clearing a field in the UI falls back to the environment variable.
 - The settings page shows where each value comes from (UI, environment, or unset).
-- Port, config directory and dry run are environment-only. The rules in 5.6 are UI-only.
+- Port, config directory, dry run and the allowed host names are environment-only. The rules in 5.6 are UI-only.
 
 ## 10. Security
 
@@ -425,7 +426,8 @@ One SQLite file in the config directory.
 - API keys and the qBittorrent password are write-only: the API never returns them, only whether each is set and where it comes from.
 - Secrets saved in the UI are stored in the SQLite file, which is created readable by its owner only.
 - Requests that change anything must be JSON and carry a custom header, and the server rejects requests whose origin does not match the address it was reached on. This stops another website open in the user's browser from triggering deletions.
-- removarr contacts only the apps configured in its settings.
+- The server answers a request, read or change, only when its Host header is an IP address, `localhost`, or a host name listed in `REMOVARR_ALLOWED_HOSTS`. Otherwise a website could point its own domain name at removarr's address (DNS rebinding). The browser would then treat removarr as part of that site, and the site could read every answer and change every setting. A name such as `pi.local`, or the name a reverse proxy passes on, has to be listed.
+- removarr contacts only the apps configured in its settings. It does not follow a redirect to another host or port, or from https to http, because the API key would go with it.
 
 ## 11. Packaging and deployment
 

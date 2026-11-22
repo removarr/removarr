@@ -71,7 +71,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	log.Info("removarr listening", "port", env.Port, "configDir", configDir, "dryRun", env.DryRun)
+	log.Info("removarr listening", "port", env.Port, "configDir", configDir, "dryRun", env.DryRun, "allowedHosts", env.AllowedHosts)
 	return serve(ctx, httpServer, ln, 10*time.Second)
 }
 

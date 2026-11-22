@@ -7,8 +7,11 @@ import (
 	"errors"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/removarr/removarr/internal/config"
@@ -65,18 +68,30 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/scans", s.startScan)
 	mux.HandleFunc("GET /api/scans/current", s.currentScan)
 	mux.HandleFunc("GET /api/candidates", s.candidates)
-	return guard(mux)
+	return guard(mux, s.Config.Env().AllowedHosts)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// guard rejects requests that change something unless they could only have been sent by
-// removarr's own UI or a deliberate API client: they must carry RequestHeader, be JSON,
-// and, when they name an origin, come from this server's own address.
-func guard(next http.Handler) http.Handler {
+// guard decides which requests reach the handlers (spec section 10).
+//
+// Every request must name this server by an IP address, by localhost or by a host name the
+// owner listed. Without that check a page on another site could point its own name at
+// removarr's address (DNS rebinding): the browser would treat removarr as that site, let
+// the page read every answer and send any header, and Host and Origin would agree.
+//
+// A request that changes something must also be one that only removarr's own UI or a
+// deliberate API client sends: it carries RequestHeader, is JSON, and, when it names an
+// origin, comes from this server's own address.
+func guard(next http.Handler, allowedHosts []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostAllowed(r.Host, allowedHosts) {
+			writeError(w, http.StatusForbidden,
+				"this server does not answer to the host name in the request; reach it by its IP address, or list the name in REMOVARR_ALLOWED_HOSTS")
+			return
+		}
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 			next.ServeHTTP(w, r)
@@ -92,13 +107,30 @@ func guard(next http.Handler) http.Handler {
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
 			u, err := url.Parse(origin)
-			if err != nil || u.Host == "" || u.Host != r.Host {
+			if err != nil || u.Host == "" || !strings.EqualFold(u.Host, r.Host) {
 				writeError(w, http.StatusForbidden, "the request does not come from this server's address")
 				return
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// hostAllowed reports whether a Host header names this server in a way another site cannot
+// imitate: an IP address, localhost, or one of the listed names. The port is ignored.
+func hostAllowed(host string, allowed []string) bool {
+	name := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		name = h
+	}
+	name = strings.TrimSuffix(strings.ToLower(strings.Trim(name, "[]")), ".")
+	if name == "" {
+		return false
+	}
+	if name == "localhost" || net.ParseIP(name) != nil {
+		return true
+	}
+	return slices.Contains(allowed, name)
 }
 
 // errorBody is the JSON body of every error response.

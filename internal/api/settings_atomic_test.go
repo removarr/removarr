@@ -94,7 +94,7 @@ func TestConcurrentRuleChangesDoNotUndoEachOther(t *testing.T) {
 	h := &harness{
 		t:       t,
 		store:   st,
-		config:  config.NewService(config.Env{Port: 7272, ConfigDir: "/config", Conn: map[string]string{}}, hooked),
+		config:  config.NewService(config.Env{Port: 7272, ConfigDir: "/config", Conn: map[string]string{}, AllowedHosts: []string{"removarr.local"}}, hooked),
 		scanner: &fakeScanner{},
 		apps:    &fakeApps{testers: map[string]providers.Tester{}},
 	}
