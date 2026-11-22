@@ -119,7 +119,7 @@ func EpisodeFiles(s domain.SeriesSnapshot) []LibraryFile // moved from internal/
 
 1. `MovieFiles`, `EpisodeFiles`: the tests that covered them through the scanner move with them; add one where two episodes share a file and one where an episode has no file.
 2. `BackedBytes`: sums over both managers by download ID; a file listed twice counts once; a file with no source counts nowhere.
-3. The per-manager sum of `SourcedBytes` in `readFiles` (open review point): a movie file and an episode file with the same file ID, different sizes, different sources. Whether a download is asked for its files must follow from its own manager's file. Check that the test fails when the series links are matched against both managers' files.
+3. The per-manager sum of sourced bytes in `readFiles` (open review point; as built, `readFiles` asks `BackedBytes` of an index made from history alone, and `SourcedBytes` was removed): a movie file and an episode file with the same file ID, different sizes, different sources. Whether a download is asked for its files must follow from its own manager's file. Check that the test fails when the series links are matched against both managers' files.
 4. Guard 1: `Compute` with downloads and a manager answered and `Files` nil gives all three lists the download-client error; with an empty non-nil map it produces the lists.
 5. Guard 2: with both managers configured and the series manager failing, the movie list shows the series manager's error; with the series manager not configured, the movie list is produced. The same the other way round.
 6. Existing scanner tests keep passing, changed only where the two guards change the expected outcome. Say which and why in the report.
@@ -228,7 +228,7 @@ Task 3's implementer and reviewer found a gap that is older than this plan: a se
 3. A still-airing series whose regular-season file also holds a special: the series row waits. The same series ended: listed.
 4. Equal file and item numbers in the two managers neither tie nor block.
 5. A series row that deletes both seasons of a file spanning them lists the file once: `FileIDs` holds it once and `Size` counts it once (spec 6.9).
-6. `TestComputeAssociatesEveryEpisodeOfASharedFileByContent` changes: its season row now waits. What it pinned about associations stays pinned by the unit test of `EpisodeFiles`.
+6. `TestComputeAssociatesEveryEpisodeOfASharedFileByContent` changes: its season row now waits (as built it was renamed `TestComputeHoldsBackASeasonWhoseFileHoldsAnEpisodeThatStays`). What it pinned about associations stays pinned by the unit test of `EpisodeFiles`.
 
 Commits: `feat: never delete a library file that holds an episode that stays`, `fix: count a file that spans two seasons once in a series row`.
 

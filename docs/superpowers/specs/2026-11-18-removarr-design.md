@@ -70,8 +70,8 @@ Consequences of API-only:
 | Counting users | The Jellyfin users whose watch state decides whether something is watched. |
 | Protected | Excluded from suggestions by a rule (favourite or tag). |
 | Ignored | Hidden from a list by the user's choice. |
-| Waiting | Qualifies, but shares a torrent with something that stays, so it is not listed yet (6.3). |
-| Tied | Rows that share a torrent and are deleted together (6.3). |
+| Waiting | Qualifies, but shares a torrent or a file with something that stays, so it is not listed yet (6.3). |
+| Tied | Rows that share a torrent or a file and are deleted together (6.3). |
 | Linked torrent | A torrent that backs at least one current library file, by history or by content (6.6). |
 | Orphan torrent | A torrent whose hash no media manager knows and that backs no library file. |
 | Unlinked torrent | A torrent a media manager grabbed, but that backs no current library file. |
@@ -169,6 +169,8 @@ Only episodes and movies that have a file are considered. "Regular seasons" mean
 - In a group of several rows that does not wait, the rows are **tied**: they are deleted together or not at all (6.7). Each is listed and names the rows it is tied to.
 - An ignored row (6.5) stays, so the group it belongs to waits.
 - A library file goes as a whole too. Rows that would delete the same file belong to one group, and a file blocks its group when it holds an episode that no row of the group would delete. Example: one file holds the last episode of a season and the first of the next, and only one of the two seasons qualifies. Deleting it would remove an episode that has not been watched.
+- Only a torrent that is in the download client counts for any of this. A source that history names and that is gone from the client can neither block nor tie.
+- In per-season mode, seasons that were merged into one series row wait as one. When one of them is blocked, none is listed, also a season that was listed on its own before the last season qualified. This is accepted for now: nothing is lost, and the summary counts the row as waiting.
 
 The check uses the library files of both media managers. A torrent shared between a movie and a series is therefore never judged from one side only: when a configured media manager did not answer, the groups cannot be formed and neither watched list is produced (6.8, rule 5).
 
