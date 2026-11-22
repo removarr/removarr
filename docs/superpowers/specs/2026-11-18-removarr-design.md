@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1.
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -139,7 +139,7 @@ A page listing every executed deletion: time, item, size, each step and its resu
 - **Movies:** by TMDB ID, falling back to IMDb ID.
 - **Series:** by TVDB ID, falling back to IMDb ID, then TMDB ID.
 - **Episodes:** within a matched series, by season number and episode number.
-- **Episode ranges:** a Jellyfin item that covers a range of episodes counts for the first episode of the range. It counts for a further episode of the range only when Sonarr holds that episode in the same file as the first. So a range that Jellyfin read wrongly from a file name cannot mark episodes in other files as watched.
+- **Episode ranges:** a Jellyfin item that covers a range of episodes counts for the first episode of the range. It counts for a further episode of the range only when Sonarr holds that episode in the same file as the first. So a range that Jellyfin read wrongly from a file name cannot mark episodes in other files as watched. If Sonarr lists the first episode's number more than once with different files, the range applies to no further episode.
 - If several Jellyfin items match one movie or episode, it is watched for a user when any of them is played by that user.
 - A movie with no Jellyfin match is never suggested. An episode with no Jellyfin match counts as unwatched. Both are counted as "unmatched" in the scan summary.
 
@@ -452,7 +452,7 @@ One SQLite file in the config directory.
 v1 is one product, built in four stages. Each stage ends with something that can be checked on the reference stack before the next begins.
 
 1. **Read-only core.** Providers, the scan engine, the store and the scan and candidate endpoints. Check: a scan against the real apps produces three correct lists. The assumptions in section 16 are verified here.
-2. **Ignore and delete.** It starts with the rules that were decided after stage 1 was checked and that change the lists: episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7). Until they are built, the lists follow the rules as they stood; 16.6 shows that no row of the reference stack differs. Then ignores, the planner, the executor and the history. Check: plans are correct with dry run on, then real deletions work.
+2. **Ignore and delete.** It starts with the rules that were decided after stage 1 was checked and that change the lists: episode ranges (6.2), whole torrents and whole files (6.3) and data outside the library (6.7). These are built (stage 2a). Then ignores, the planner, the executor and the history. Check: plans are correct with dry run on, then real deletions work.
 3. **Web UI.** All pages, on top of the finished API.
 4. **Packaging.** The multi-architecture image, the compose example and the README.
 
@@ -581,7 +581,7 @@ All 13 orphans are torrents outside the two categories the media managers use. U
 
 ### 16.6 The rules decided after the check
 
-On 2026-11-19 the owner stated the two principles of section 2 and asked for the open cases to be decided from them. The rules that follow from them are episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7). They are not built yet (section 13). Measured on the reference stack, from the lists of one scan and the apps' raw answers:
+On 2026-11-19 the owner stated the two principles of section 2 and asked for the open cases to be decided from them. The rules that follow from them are episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7). They were built in stage 2a, which added one more: a library file goes as a whole too (6.3). Measured on the reference stack before they were built, from the lists of one scan and the apps' raw answers:
 
 - **Whole torrents.** None of the 63 movie and series rows would delete only part of what a torrent backs. For 32 rows every backing torrent goes with the row, and for 31 rows no torrent in the download client holds the files. The rule changes no row today.
 - The shapes the rule exists for do occur among the 315 torrents that back library files: 12 back files in two or more seasons of one series, 2 back specials together with regular episodes, and 1 backs two or more movies.

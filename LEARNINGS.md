@@ -14,8 +14,11 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-19. **Count the records a page returned; do not trust the page size you asked for.** History is returned newest first and the requested size was honoured, but a server that caps it would otherwise cut history short and make tracked torrents look orphaned (`eachPage`).
 - 2026-11-19. **Completed downloads can stay in the queue** when their import is blocked or pending, some of them unmatched to any series or movie. Ask the queue with `includeUnknownSeriesItems` or `includeUnknownMovieItems`. A queued torrent is never listed.
 - 2026-11-19. **History holds download IDs of other clients too**, such as a usenet client. They never match a torrent and are ignored.
-- 2026-11-19. **Sonarr and Radarr both number files and items from 1.** A file ID or item ID means nothing without its manager. Link and count per manager, and add up only by download ID (`linkData`, `SourcedBytes`).
+- 2026-11-19. **Sonarr and Radarr both number files and items from 1.** A file ID or item ID means nothing without its manager. Link and count per manager, and add up only by download ID (`linkData`, `NewLinkIndex`).
 - 2026-11-22. **Sonarr's file list and episode list are two requests.** An import or upgrade in between leaves an episode pointing at a file the list does not hold. That is an incomplete answer and fails the read; it is not a file of size 0 (`internal/providers/sonarr`).
+
+- 2026-11-22. **Looking an episode up by season and number can be ambiguous.** If Sonarr ever lists the same number twice with different files, the answer depends on the order they arrive in. Where it matters which file an episode is in, such a number counts as unknown (`fileIDsOf` in `internal/scan/series.go`).
+- 2026-11-22. **One library file can hold episodes of two seasons, or a special and a regular episode.** A season row used to delete such a file together with an episode that was not watched. Files are kept whole like torrents (spec 6.3).
 
 ## Jellyfin
 
@@ -38,6 +41,9 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-19. **removarr cannot see hard links.** It talks to the apps only, so a size is a size and never "space that will be freed". With hard links, deleting library files while their torrent stays frees nothing, which is the reason for the whole-torrent rule (spec section 2, 6.3).
 - 2026-11-19. **What looks like an orphan is often not media at all.** All orphans left on the reference stack were torrents outside the categories the media managers use. Excluded categories and tags exist for them.
 
+- 2026-11-22. **A row cannot be judged on its own once rows share something.** Whether a torrent can go depends on every row that is deleted with it. Rows are grouped through the torrents and files they share, and the group is judged as one: it waits, or its rows are tied (`scan.WholeTorrents`).
+- 2026-11-22. **Only a torrent that is in the download client can block or tie rows.** History keeps naming sources that are long gone.
+
 ## Security
 
 - 2026-11-22. **Comparing Origin with Host does not stop DNS rebinding.** A page that points its own domain name at removarr's address makes the browser send that name as both headers. Only checking the Host header against IP addresses, `localhost` and listed names does (`guard`, `REMOVARR_ALLOWED_HOSTS`, spec section 10).
@@ -55,6 +61,7 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 ## Checking against real apps
 
 - 2026-11-19. **Verify a list by computing it a second time from the apps' raw answers**, with a separate script, and compare row by row. This is how the torrents that still held library files were found; no unit test could have shown them.
+- 2026-11-22. **To check a change of rules, scan with the old and the new binary against the same apps** and compare row by row. Every difference must be one the raw data explains.
 - 2026-11-19. **Print counts and sizes only** when working with real data. Titles, names, URLs and keys stay out of logs, commits and reports.
 - 2026-11-19. **On macOS a binary started by an automated agent session can get "no route to host" for addresses on the local network**, while `curl` works. This is the system's local-network privacy control. Run the binary from a normal terminal instead of working around it.
 - 2026-11-19. **A full scan of the reference stack takes about 19 seconds** on a Raspberry Pi 5: 277 movies, 134 series, 381 torrents, 90 file lists.
@@ -62,5 +69,6 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 ## Tests and reviews
 
 - 2026-11-19. **A test that never asserts the row it is about passes under almost any fault.** Four one-line faults in the linking glue survived a green suite until tests asserted which torrent a series row names. After adding glue code, break it on purpose and check that a test fails.
+- 2026-11-22. **Have the reviewer break the code.** Each task review changed one line at a time in a scratch copy and looked for a test that failed. The changes that survived showed tests that passed for the wrong reason: the two ends of an episode range, the list a waiting row is counted in, and the media manager missing from a key.
 - 2026-11-22. **An outside review still finds things after two internal ones.** The automated review of pull request 1 raised seven points, all real, most about what happens between two steps: two reads, two writes, two requests.
 - 2026-11-22. **A subtest name ends up in the path of its temporary directory.** A name with a `%` in it broke opening a database there. Share one fixture across such cases.
