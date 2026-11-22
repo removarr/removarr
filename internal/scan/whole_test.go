@@ -326,6 +326,19 @@ func TestWholeTorrents(t *testing.T) {
 			wantMovies: []listedRow{{key: "tmdb:1"}},
 		},
 		{
+			name: "12c. a pack grabbed for two movies that backs only one file is not named by the other row",
+			movies: ManagerFiles{
+				Links: link(map[string][]int{"pack": {1, 2}}, map[int]string{20: "pack"}),
+				Files: libFiles(10, 20),
+			},
+			downloads: []string{"pack"},
+			movieRows: []Row{movieRow("tmdb:1", 1, 10), movieRow("tmdb:2", 2, 20)},
+			wantMovies: []listedRow{
+				{key: "tmdb:1"},
+				{key: "tmdb:2", torrents: []string{"pack"}},
+			},
+		},
+		{
 			name: "13. candidates are sorted by key and the rows they are tied to by list, then key",
 			movies: ManagerFiles{
 				Links: link(nil, map[int]string{10: "x", 20: "x", 30: "y"}),
@@ -435,6 +448,28 @@ func TestWholeFiles(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { runWhole(t, tt) })
+	}
+}
+
+// WholeTorrents fills the lists from their rows each time: a second call on the same lists
+// leaves what the first call found.
+func TestWholeTorrentsCanBeCalledTwice(t *testing.T) {
+	x := NewLinkIndex(ManagerFiles{
+		Manager: ManagerMovies,
+		Links:   link(nil, map[int]string{20: "q"}, "q"),
+		Files:   libFiles(10, 20),
+	})
+	movies := &ListResult{Rows: []Row{movieRow("tmdb:1", 1, 10), movieRow("tmdb:2", 2, 20)}}
+	downloads := []domain.Download{dl("q")}
+
+	WholeTorrents(domain.DefaultRules(), x, downloads, movies)
+	wantCandidates, wantWaiting := movies.Candidates, movies.Waiting
+	if len(wantCandidates) != 1 || wantWaiting != 1 {
+		t.Fatalf("first call: %d listed, %d waiting, want 1 and 1", len(wantCandidates), wantWaiting)
+	}
+	WholeTorrents(domain.DefaultRules(), x, downloads, movies)
+	if !reflect.DeepEqual(movies.Candidates, wantCandidates) || movies.Waiting != wantWaiting {
+		t.Errorf("second call: candidates %+v, waiting %d; want %+v and %d", movies.Candidates, movies.Waiting, wantCandidates, wantWaiting)
 	}
 }
 

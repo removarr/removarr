@@ -273,6 +273,12 @@ func TestSeriesEpisodeRangeCountsOnlyWhereSonarrHoldsOneFile(t *testing.T) {
 			wantProtected: 1,
 		},
 		{
+			name:     "a range in season 2 looks up its first episode in season 2",
+			series:   show(true, ep(11, 1, 1, 11), ep(21, 2, 1, 20), ep(22, 2, 2, 20)),
+			eps:      []domain.ServerEpisode{sep(1, 1, seen), rangeEp(2, 1, 2, seen)},
+			wantKeys: []string{"tvdb:100"},
+		},
+		{
 			name:          "an episode after the range's end is not covered",
 			series:        show(true, ep(11, 1, 1, 10), ep(12, 1, 2, 10), ep(13, 1, 3, 10), ep(21, 2, 1, 21)),
 			eps:           []domain.ServerEpisode{rangeEp(1, 1, 2, seen), s2},

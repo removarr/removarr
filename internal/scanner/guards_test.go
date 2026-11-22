@@ -57,6 +57,32 @@ func TestRunFailsAWatchedListWhenTheOtherMediaManagerFails(t *testing.T) {
 	expect(t, st, domain.ListMovies, 0, "The movie manager could not be read: timeout")
 }
 
+// The guard asks for a read of the file lists whenever one media manager answered: with only
+// the movie manager configured, a Fetched without file lists still fails the lists.
+func TestComputeFailsTheListsWhenOnlyOneMediaManagerIsConfiguredAndFilesWereNotRead(t *testing.T) {
+	p, _ := world()
+	p.Series = nil
+	f := fetchedFrom(p)
+	f.Files = nil
+	summary, _ := Compute(withUser(), now, f)
+
+	const want = "The download client could not be read: its file lists were not read"
+	for _, list := range []domain.ListKind{domain.ListMovies, domain.ListTorrents} {
+		if got := summary.Lists[list].Error; got != want {
+			t.Errorf("%s: error %q, want %q", list, got, want)
+		}
+	}
+}
+
+// A failed media manager is named before a failed download client.
+func TestRunNamesTheOtherMediaManagerBeforeTheDownloadClient(t *testing.T) {
+	p, _ := world()
+	p.Series = &fakeSeries{err: errors.New("series down")}
+	p.Downloads = &fakeDownloads{err: errors.New("client down")}
+	st := run(t, p, withUser())
+	expect(t, st, domain.ListMovies, 0, "The series manager could not be read: series down")
+}
+
 func TestRunReportsTheListsOwnManagerFirst(t *testing.T) {
 	p, _ := world()
 	p.Movies = &fakeMovies{err: errors.New("movies down")}
@@ -79,7 +105,7 @@ func TestRunProducesAWatchedListWhenTheOtherMediaManagerIsNotConfigured(t *testi
 // the series manager's file 10 (100 MB) came from "show1", a download 660 MB larger.
 // Matching the series links against the movie manager's files as well would count show1's
 // source as 800 MB and hide that show1 holds more than history says.
-func TestRunSumsSourcedBytesPerManager(t *testing.T) {
+func TestRunCountsBackedBytesPerManager(t *testing.T) {
 	p, _ := world()
 	downloads := p.Downloads.(*fakeDownloads)
 	movies := p.Movies.(*fakeMovies)
