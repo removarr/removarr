@@ -191,7 +191,7 @@ func IgnoreKind(c Candidate) string {
 // number. It accepts exactly the keys SeasonKey makes.
 func ParseSeasonKey(key string) (seriesKey string, season int, ok bool) {
 	i := strings.LastIndex(key, ":s")
-	if i < 0 || !strings.HasPrefix(key, "tvdb:") {
+	if i < len("tvdb:") || !strings.HasPrefix(key, "tvdb:") {
 		return "", 0, false
 	}
 	tvdb := key[len("tvdb:"):i]
@@ -393,7 +393,7 @@ func TestViewAppliesIgnores(t *testing.T) {
 			name: "nothing ignored: listed rows are shown and held rows wait",
 			want: map[domain.ListKind]viewWant{
 				domain.ListMovies:   {shown: []string{"tmdb:1", "tmdb:2"}, ignored: []string{}},
-				domain.ListSeries:   {shown: []string{"tvdb:100", "tvdb:200:s1", "tvdb:2000:s1"}, ignored: []string{}, waiting: 1},
+				domain.ListSeries:   {shown: []string{"tvdb:100", "tvdb:2000:s1", "tvdb:200:s1"}, ignored: []string{}, waiting: 1},
 				domain.ListTorrents: {shown: []string{"hash:a"}, ignored: []string{}},
 			},
 		},
@@ -402,7 +402,7 @@ func TestViewAppliesIgnores(t *testing.T) {
 			ignores: []domain.Ignore{ignore(domain.IgnoreMovie, "tmdb:1"), ignore(domain.IgnoreTorrent, "hash:a")},
 			want: map[domain.ListKind]viewWant{
 				domain.ListMovies:   {shown: []string{"tmdb:2"}, ignored: []string{"tmdb:1"}},
-				domain.ListSeries:   {shown: []string{"tvdb:100", "tvdb:200:s1", "tvdb:2000:s1"}, ignored: []string{}, waiting: 1},
+				domain.ListSeries:   {shown: []string{"tvdb:100", "tvdb:2000:s1", "tvdb:200:s1"}, ignored: []string{}, waiting: 1},
 				domain.ListTorrents: {shown: []string{}, ignored: []string{"hash:a"}},
 			},
 		},
@@ -411,7 +411,7 @@ func TestViewAppliesIgnores(t *testing.T) {
 			ignores: []domain.Ignore{ignore(domain.IgnoreMovie, "tmdb:2")},
 			want: map[domain.ListKind]viewWant{
 				domain.ListMovies:   {shown: []string{"tmdb:1"}, ignored: []string{"tmdb:2"}},
-				domain.ListSeries:   {shown: []string{"tvdb:200:s1", "tvdb:2000:s1"}, ignored: []string{}, waiting: 2},
+				domain.ListSeries:   {shown: []string{"tvdb:2000:s1", "tvdb:200:s1"}, ignored: []string{}, waiting: 2},
 				domain.ListTorrents: {shown: []string{"hash:a"}, ignored: []string{}},
 			},
 		},
@@ -429,7 +429,7 @@ func TestViewAppliesIgnores(t *testing.T) {
 			ignores: []domain.Ignore{ignore(domain.IgnoreSeason, "tvdb:100:s1")},
 			want: map[domain.ListKind]viewWant{
 				domain.ListMovies:   {shown: []string{"tmdb:1", "tmdb:2"}, ignored: []string{}},
-				domain.ListSeries:   {shown: []string{"tvdb:100", "tvdb:200:s1", "tvdb:2000:s1"}, ignored: []string{"tvdb:100:s1"}, waiting: 1},
+				domain.ListSeries:   {shown: []string{"tvdb:100", "tvdb:2000:s1", "tvdb:200:s1"}, ignored: []string{"tvdb:100:s1"}, waiting: 1},
 				domain.ListTorrents: {shown: []string{"hash:a"}, ignored: []string{}},
 			},
 		},
@@ -438,7 +438,7 @@ func TestViewAppliesIgnores(t *testing.T) {
 			ignores: []domain.Ignore{ignore(domain.IgnoreSeason, "tvdb:200:s2")},
 			want: map[domain.ListKind]viewWant{
 				domain.ListMovies:   {shown: []string{"tmdb:1", "tmdb:2"}, ignored: []string{}},
-				domain.ListSeries:   {shown: []string{"tvdb:100", "tvdb:200:s1", "tvdb:2000:s1"}, ignored: []string{"tvdb:200:s2"}},
+				domain.ListSeries:   {shown: []string{"tvdb:100", "tvdb:2000:s1", "tvdb:200:s1"}, ignored: []string{"tvdb:200:s2"}},
 				domain.ListTorrents: {shown: []string{"hash:a"}, ignored: []string{}},
 			},
 		},
