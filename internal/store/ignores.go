@@ -25,17 +25,21 @@ func (s *Store) AddIgnores(ctx context.Context, ignores []domain.Ignore) error {
 	return tx.Commit()
 }
 
-// RemoveIgnores deletes the ignores with the given keys in one transaction. A key that is
-// not ignored is skipped.
-func (s *Store) RemoveIgnores(ctx context.Context, keys []string) error {
+// RemoveIgnores deletes the ignores of the given rows in one transaction: an ignore goes
+// only when its key and the list it belongs to both match. The list is matched in the
+// delete itself, so a request that runs alongside cannot change what goes in between. A
+// row that is not ignored in its list is skipped.
+func (s *Store) RemoveIgnores(ctx context.Context, rows []domain.RowRef) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	for _, key := range keys {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM ignores WHERE key = ?`, key); err != nil {
-			return err
+	for _, row := range rows {
+		for _, kind := range domain.IgnoreKinds(row.List) {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM ignores WHERE key = ? AND kind = ?`, row.Key, kind); err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()

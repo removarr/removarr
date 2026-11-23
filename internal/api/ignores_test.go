@@ -274,6 +274,8 @@ func TestIgnoreRequestsAreValidated(t *testing.T) {
 		{`{}`, "rows"},
 		{`{"rows":[]}`, "rows"},
 		{`{"rows":[{"list":"movies","key":"tmdb:604"}],"extra":1}`, ""},
+		{`{"rows":[{"list":"movies","key":"tmdb:604"}]} {"rows":[]}`, ""},
+		{`{"rows":[{"list":"movies","key":"tmdb:604"}]}garbage`, ""},
 		{`{"rows":[{"list":"films","key":"tmdb:604"}]}`, "rows[0].list"},
 		{`{"rows":[{"list":"movies","key":""}]}`, "rows[0].key"},
 		{`{"rows":[{"list":"movies"}]}`, "rows[0].key"},

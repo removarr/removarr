@@ -30,6 +30,30 @@ func TestParseSeasonKeyAcceptsOnlyKeysThatSeasonKeyMakes(t *testing.T) {
 	}
 }
 
+func TestIgnoreKindsIsTheInverseOfList(t *testing.T) {
+	for _, list := range []ListKind{ListMovies, ListSeries, ListTorrents} {
+		kinds := IgnoreKinds(list)
+		if len(kinds) == 0 {
+			t.Errorf("IgnoreKinds(%s) is empty", list)
+		}
+		for _, kind := range kinds {
+			if got := (Ignore{Kind: kind}).List(); got != list {
+				t.Errorf("kind %q from IgnoreKinds(%s) belongs to %s", kind, list, got)
+			}
+		}
+	}
+	seen := 0
+	for _, list := range []ListKind{ListMovies, ListSeries, ListTorrents} {
+		seen += len(IgnoreKinds(list))
+	}
+	if seen != 4 {
+		t.Errorf("IgnoreKinds covers %d kinds, want all 4", seen)
+	}
+	if got := IgnoreKinds("films"); got != nil {
+		t.Errorf("IgnoreKinds(films) = %v, want nil", got)
+	}
+}
+
 func TestIgnoreKindAndListFollowTheRow(t *testing.T) {
 	tests := []struct {
 		row  Candidate

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/removarr/removarr/internal/domain"
@@ -21,7 +22,9 @@ func readRows(w http.ResponseWriter, r *http.Request) ([]rowRef, error) {
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	// The object must be the whole body: anything after it, valid JSON or not, is refused,
+	// so the size limit and the checks below cover everything that was sent.
+	if err := decoder.Decode(&req); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return nil, &domain.FieldError{Field: "", Message: `the body must be {"rows":[{"list":…,"key":…}]}`}
 	}
 	if len(req.Rows) == 0 {
@@ -83,22 +86,12 @@ func (s *Server) removeIgnores(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	saved, err := s.Store.Ignores(r.Context())
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	ignored := make(map[rowRef]bool, len(saved))
-	for _, i := range saved {
-		ignored[rowRef{i.List(), i.Key}] = true
-	}
-	keys := make([]string, 0, len(rows))
+	refs := make([]domain.RowRef, 0, len(rows))
 	for _, row := range rows {
-		if ignored[row] {
-			keys = append(keys, row.Key)
-		}
+		refs = append(refs, domain.RowRef{List: row.List, Key: row.Key})
 	}
-	if err := s.Store.RemoveIgnores(r.Context(), keys); err != nil {
+	// The store matches the list inside its delete, so the request is atomic.
+	if err := s.Store.RemoveIgnores(r.Context(), refs); err != nil {
 		s.fail(w, err)
 		return
 	}

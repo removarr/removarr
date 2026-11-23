@@ -31,11 +31,34 @@ func TestIgnoresAreSavedAndRemoved(t *testing.T) {
 		t.Fatalf("Ignores = %+v, %v; want the movie then the season, as first saved", got, err)
 	}
 
-	if err := s.RemoveIgnores(ctx, []string{"tmdb:603", "hash:never-ignored"}); err != nil {
+	if err := s.RemoveIgnores(ctx, []domain.RowRef{
+		{List: domain.ListMovies, Key: "tmdb:603"},
+		{List: domain.ListTorrents, Key: "hash:never-ignored"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := s.Ignores(ctx); !reflect.DeepEqual(got, []domain.Ignore{season}) {
 		t.Errorf("after removing the movie: %+v, want the season alone", got)
+	}
+}
+
+// The list is matched in the same statement that deletes, so a request that runs alongside
+// cannot change what is removed between a read and the delete.
+func TestRemoveIgnoresRemovesOnlyIgnoresOfTheListNamed(t *testing.T) {
+	s := open(t)
+	torrent := domain.Ignore{Kind: domain.IgnoreTorrent, Key: "hash:abc", Title: "Some.Torrent", CreatedAt: firstIgnore}
+	season := domain.Ignore{Kind: domain.IgnoreSeason, Key: "tvdb:100:s2", Title: "The Show", CreatedAt: firstIgnore}
+	if err := s.AddIgnores(ctx, []domain.Ignore{torrent, season}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveIgnores(ctx, []domain.RowRef{
+		{List: domain.ListMovies, Key: "hash:abc"},
+		{List: domain.ListSeries, Key: "tvdb:100:s2"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Ignores(ctx); !reflect.DeepEqual(got, []domain.Ignore{torrent}) {
+		t.Errorf("ignores = %+v, want the torrent kept and the season removed", got)
 	}
 }
 

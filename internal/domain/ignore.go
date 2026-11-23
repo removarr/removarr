@@ -34,6 +34,21 @@ func (i Ignore) List() ListKind {
 	}
 }
 
+// IgnoreKinds returns the kinds of ignore whose rows belong to list, the inverse of
+// Ignore.List. It returns nil for an unknown list.
+func IgnoreKinds(list ListKind) []string {
+	switch list {
+	case ListMovies:
+		return []string{IgnoreMovie}
+	case ListSeries:
+		return []string{IgnoreSeries, IgnoreSeason}
+	case ListTorrents:
+		return []string{IgnoreTorrent}
+	default:
+		return nil
+	}
+}
+
 // IgnoreKind returns the kind of ignore that hides the row.
 func IgnoreKind(c Candidate) string {
 	switch {
