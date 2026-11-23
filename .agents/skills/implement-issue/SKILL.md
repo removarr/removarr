@@ -1,7 +1,9 @@
 ---
 name: implement-issue
-description: Takes one GitHub issue of removarr from open to a reviewed pull request. Use when the owner asks to work on, implement, continue or pick up an issue, or to work on the next issue. Not for a question about an issue.
+description: Takes one GitHub issue of removarr from open to a reviewed pull request. Runs only when the owner calls it by name, with "next", an issue number or an issue URL. Never start it on your own.
 compatibility: Requires git and the GitHub CLI (gh), signed in with an account that can see the repository.
+argument-hint: "next | <issue number> | <issue URL>"
+disable-model-invocation: true
 ---
 
 # Implementing an issue
@@ -11,6 +13,26 @@ One run takes one issue from open to a reviewed pull request. An agent does the 
 `AGENTS.md` holds the rules for every change. This skill holds the order of work. Its scripts are in the `scripts` folder next to this file. The commands below give their path from the root of the repository.
 
 "The checks" in this skill are the commands that `AGENTS.md` lists as checks under "Commands": formatting, vet, the tests, the race tests and the build. Starting the server is not one of them.
+
+## Starting a run
+
+A run starts only when the owner calls this skill by name. Do not start one because a request mentions an issue.
+
+```
+/implement-issue next
+/implement-issue 3
+/implement-issue https://github.com/removarr/removarr/issues/3
+```
+
+That is how Claude Code calls it. Other tools have their own way to call a skill by name; the argument is the same.
+
+| Argument | The issue |
+|---|---|
+| `next`, or no argument | The open issue with the lowest number whose dependencies are closed (step 1) |
+| A number, with or without `#` | That issue |
+| The URL of an issue | That issue. The URL must point to an issue of this repository |
+
+Stop and tell the owner when the argument is anything else, when a URL points to another repository or to a pull request, and when the issue does not exist or is closed. Do not guess which issue was meant.
 
 ## The run
 
@@ -33,8 +55,8 @@ The skills in the table are those of the superpowers plugin. "What changes in th
 
 ### 1. Pick the issue
 
-- Take the issue the owner named, in the request or as the argument of the command. If the owner named none, take the open issue with the lowest number whose dependencies are closed. An issue names them as "Depends on #N".
-- Issue #8 is a list of follow-ups, not a work package. Never pick it as a whole; see "Follow-ups".
+- The argument says which issue; see "Starting a run". For `next`, take the open issue with the lowest number whose dependencies are closed. An issue names them as "Depends on #N".
+- Issue #8 is a list of follow-ups, not a work package. `next` never picks it. Called with its number, ask the owner which of its items are meant; see "Follow-ups".
 - If a branch or a pull request for the issue exists already, continue it; see "Where a run continues".
 - One issue per run. When the run ends, stop.
 
@@ -156,6 +178,7 @@ The owner merges, or tells the agent to. Use a merge commit, never squash or reb
 
 Only these stop a run:
 
+- The argument does not name an open issue of this repository.
 - A question that neither the spec nor its two principles answer.
 - The plan of an issue that adds a changing or deleting call to an app (step 4).
 - A new third-party module.

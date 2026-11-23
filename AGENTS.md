@@ -10,7 +10,7 @@ removarr suggests what to delete from a self-hosted media server: watched movies
   - A torrent goes as a whole or stays as a whole. Never delete only part of what a torrent holds.
 - **`LEARNINGS.md`** before you touch an app client, the linking rules or the store. It records what was already found out the hard way.
 - **Work packages** are GitHub issues: stage 2 in four parts, the web UI, packaging, and review follow-ups. Each names what it depends on. Implementation plans are in `docs/superpowers/plans/`.
-- **The `implement-issue` skill** when you take an issue: `.agents/skills/implement-issue/SKILL.md`. It gives the order of work, from picking the issue to the reviewed pull request, and says when to stop and ask. A tool that has no skills reads it as a file.
+- **The `implement-issue` skill** takes one issue from open to a reviewed pull request: `.agents/skills/implement-issue/SKILL.md`. Only the owner starts it, by calling it by name: `/implement-issue` with `next`, an issue number or an issue URL. Do not start it on your own, and do not follow it because a request mentions an issue. In a tool that cannot call skills, the owner names it and you read the file.
 
 ## Layout
 
