@@ -43,6 +43,11 @@ Choose whose watch state counts, start a scan, then read the lists:
     curl 'localhost:7272/api/candidates?list=movies'
     curl 'localhost:7272/api/candidates?list=series'
     curl 'localhost:7272/api/candidates?list=torrents'
+    curl -X POST -H 'Content-Type: application/json' -H 'X-Removarr-Request: 1' \
+      -d '{"rows":[{"list":"movies","key":"tmdb:603"}]}' localhost:7272/api/ignores
+    curl 'localhost:7272/api/candidates?list=movies&ignored=true'
+    curl -X DELETE -H 'Content-Type: application/json' -H 'X-Removarr-Request: 1' \
+      -d '{"rows":[{"list":"movies","key":"tmdb:603"}]}' localhost:7272/api/ignores
 
 removarr has no login. Run it only on a network you trust, and do not expose it to the internet.
 
