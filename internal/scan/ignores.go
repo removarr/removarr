@@ -56,6 +56,10 @@ type ListView struct {
 // two shared now backs something that stays. An ignore whose row the scan did not store is
 // shown in the ignored view by its key and title. Both slices are sorted by key and never
 // nil.
+//
+// View relies on TiedWith naming every other row of a row's group, across chains, as
+// WholeTorrents fills it. With direct neighbours only, a hidden row would not hold back the
+// far end of a chain.
 func View(list domain.ListKind, rows []domain.Candidate, ignores IgnoreSet) ListView {
 	v := ListView{Shown: []domain.Candidate{}, Ignored: []domain.Candidate{}}
 	e := newEffects(rows, ignores)
