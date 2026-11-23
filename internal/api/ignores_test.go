@@ -237,6 +237,22 @@ func TestUnignoreAnIgnoreWithoutARow(t *testing.T) {
 	}
 }
 
+// Un-ignoring removes only ignores of the list named; a key of another list is skipped like
+// a key that is not ignored.
+func TestUnignoreRemovesOnlyIgnoresOfTheListNamed(t *testing.T) {
+	h := newHarness(t, nil)
+	storeTiedScan(t, h)
+	if rec := h.do(http.MethodPost, "/api/ignores", ignoreBody("torrents/hash:abc")); rec.Code != http.StatusNoContent {
+		t.Fatalf("POST = %d %s", rec.Code, rec.Body)
+	}
+	if rec := h.do(http.MethodDelete, "/api/ignores", ignoreBody("movies/hash:abc")); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE = %d %s, want 204", rec.Code, rec.Body)
+	}
+	if got := savedIgnores(t, h); !reflect.DeepEqual(got, []string{"torrent hash:abc Some.Torrent"}) {
+		t.Errorf("saved = %v, want the torrent ignore kept", got)
+	}
+}
+
 // A row ignored before a new scan stays hidden after it (spec 6.5).
 func TestIgnoredRowsStayHiddenAfterANewScan(t *testing.T) {
 	h := newHarness(t, nil)

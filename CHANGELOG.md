@@ -17,7 +17,7 @@ Rows you do not want suggested can be hidden and brought back. Still read-only t
 #### Scope
 
 - **Ignore:** `POST /api/ignores` with `{"rows":[{"list":"movies","key":"tmdb:603"}]}` hides rows, in bulk. Only rows of the latest scan can be ignored; the request is saved whole or not at all.
-- **Un-ignore:** `DELETE /api/ignores` with the same body brings rows back. An ignore whose row is gone can still be removed.
+- **Un-ignore:** `DELETE /api/ignores` with the same body brings rows back. Only an ignore in the list named is removed; another key is skipped. An ignore whose row is gone can still be removed.
 - **Ignored view:** `GET /api/candidates?list=…&ignored=true` lists one entry per ignore, with `ignoredAt`. An ignore that the latest scan has no row for shows its key and title with `notInScan`; a row the scan holds back shows `waiting`.
 - **Takes effect at once:** ignoring and un-ignoring change the lists and the counts in `/api/status` and `/api/scans/current` without a new scan. A row tied to an ignored row is not listed and counts as `waiting`, because the torrent or file they share now stays.
 - **Series and seasons:** ignoring a series hides its season rows too. Ignoring a season hides only that season's row and has no effect in whole-series mode. In per-season mode, seasons are not merged into one series row while one of them is ignored; un-ignoring that season merges them at the next scan. A series row that a scan merged while you ignored one of its seasons, because the scan was still running, is marked `merged` and counts as `waiting` until the next scan, together with every row tied to it.

@@ -75,17 +75,28 @@ func (s *Server) addIgnores(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// removeIgnores un-ignores rows. A key that is not ignored is skipped. The latest scan is
-// not consulted: an ignore whose row is gone can still be removed.
+// removeIgnores un-ignores rows. A key that is not ignored in the list named is skipped. The
+// latest scan is not consulted: an ignore whose row is gone can still be removed.
 func (s *Server) removeIgnores(w http.ResponseWriter, r *http.Request) {
 	rows, err := readRows(w, r)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	saved, err := s.Store.Ignores(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	ignored := make(map[rowRef]bool, len(saved))
+	for _, i := range saved {
+		ignored[rowRef{i.List(), i.Key}] = true
+	}
 	keys := make([]string, 0, len(rows))
 	for _, row := range rows {
-		keys = append(keys, row.Key)
+		if ignored[row] {
+			keys = append(keys, row.Key)
+		}
 	}
 	if err := s.Store.RemoveIgnores(r.Context(), keys); err != nil {
 		s.fail(w, err)

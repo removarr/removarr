@@ -38,6 +38,7 @@ type Store interface {
 	ReadLatest(ctx context.Context) (store.Latest, error)
 	AddIgnores(ctx context.Context, ignores []domain.Ignore) error
 	RemoveIgnores(ctx context.Context, keys []string) error
+	Ignores(ctx context.Context) ([]domain.Ignore, error)
 }
 
 // Apps gives access to the configured apps. *app.Apps satisfies it.
