@@ -130,16 +130,10 @@ type racingStore struct {
 	afterRead func()
 }
 
-func (r *racingStore) LatestScan(ctx context.Context) (*store.ScanRecord, error) {
-	rec, err := r.Store.LatestScan(ctx)
+func (r *racingStore) ReadLatest(ctx context.Context) (store.Latest, error) {
+	l, err := r.Store.ReadLatest(ctx)
 	r.afterRead()
-	return rec, err
-}
-
-func (r *racingStore) LatestList(ctx context.Context, list domain.ListKind) (*store.ScanRecord, []domain.Candidate, error) {
-	rec, rows, err := r.Store.LatestList(ctx, list)
-	r.afterRead()
-	return rec, rows, err
+	return l, err
 }
 
 // Finishing a scan drops the rows of the scan before it. A request that read the older

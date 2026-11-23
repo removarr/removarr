@@ -32,12 +32,12 @@ type scanResponse struct {
 
 // currentScan reports the scan in progress and the latest finished scan.
 func (s *Server) currentScan(w http.ResponseWriter, r *http.Request) {
-	last, err := s.Store.LatestScan(r.Context())
+	v, err := s.latest(r.Context())
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, scanResponse{Status: s.Scanner.Status(), Last: last})
+	writeJSON(w, http.StatusOK, scanResponse{Status: s.Scanner.Status(), Last: v.rec})
 }
 
 type candidatesResponse struct {
@@ -57,18 +57,30 @@ func (s *Server) candidates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The scan and its rows are read together: a scan that finishes meanwhile drops the
-	// rows of the scan before it.
-	last, rows, err := s.Store.LatestList(r.Context(), list)
+	var showIgnored bool
+	switch r.URL.Query().Get("ignored") {
+	case "", "false":
+	case "true":
+		showIgnored = true
+	default:
+		writeError(w, http.StatusBadRequest, `ignored must be "true" or "false"`)
+		return
+	}
+
+	// The scan, its rows and the ignores are read together: a scan that finishes meanwhile
+	// drops the rows of the scan before it.
+	v, err := s.latest(r.Context())
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	resp := candidatesResponse{List: list, Candidates: []domain.Candidate{}}
-	if last != nil {
-		resp.ScannedAt = last.FinishedAt
-		resp.Error = last.Summary.Lists[list].Error
-		resp.Candidates = rows
+	resp := candidatesResponse{List: list, Candidates: v.lists[list].Shown}
+	if showIgnored {
+		resp.Candidates = v.lists[list].Ignored
+	}
+	if v.rec != nil {
+		resp.ScannedAt = v.rec.FinishedAt
+		resp.Error = v.rec.Summary.Lists[list].Error
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -100,11 +112,11 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.Connections[app] = connectionStatus{Configured: configured}
 	}
-	last, err := s.Store.LatestScan(r.Context())
+	v, err := s.latest(r.Context())
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	resp.LastScan = last
+	resp.LastScan = v.rec
 	writeJSON(w, http.StatusOK, resp)
 }

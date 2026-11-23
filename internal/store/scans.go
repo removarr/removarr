@@ -93,31 +93,6 @@ func (s *Store) LatestScan(ctx context.Context) (*ScanRecord, error) {
 	return latestScan(ctx, s.db)
 }
 
-// LatestList returns the most recent finished scan together with its rows of one list. Both
-// are read in one transaction: FinishScan drops the rows of earlier scans, so a scan that
-// finished between two separate reads would leave the older scan with no rows. The scan is
-// nil when there is none.
-func (s *Store) LatestList(ctx context.Context, list domain.ListKind) (*ScanRecord, []domain.Candidate, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer tx.Rollback() // nothing was written
-
-	rec, err := latestScan(ctx, tx)
-	if err != nil {
-		return nil, nil, err
-	}
-	if rec == nil {
-		return nil, []domain.Candidate{}, nil
-	}
-	rows, err := candidates(ctx, tx, rec.ID, list)
-	if err != nil {
-		return nil, nil, err
-	}
-	return rec, rows, nil
-}
-
 // Latest is the latest finished scan, every row it stored and the ignores, read together.
 type Latest struct {
 	Scan    *ScanRecord        // nil when no scan has finished

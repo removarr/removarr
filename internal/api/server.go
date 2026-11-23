@@ -34,8 +34,7 @@ type Scanner interface {
 
 // Store is the part of the store the API uses. *store.Store satisfies it.
 type Store interface {
-	LatestScan(ctx context.Context) (*store.ScanRecord, error)
-	LatestList(ctx context.Context, list domain.ListKind) (*store.ScanRecord, []domain.Candidate, error)
+	ReadLatest(ctx context.Context) (store.Latest, error)
 }
 
 // Apps gives access to the configured apps. *app.Apps satisfies it.
