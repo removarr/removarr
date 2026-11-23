@@ -118,6 +118,39 @@ func (s *Store) LatestList(ctx context.Context, list domain.ListKind) (*ScanReco
 	return rec, rows, nil
 }
 
+// Latest is the latest finished scan, every row it stored and the ignores, read together.
+type Latest struct {
+	Scan    *ScanRecord        // nil when no scan has finished
+	Rows    []domain.Candidate // the rows of every list, listed and held back, by list and key; never nil
+	Ignores []domain.Ignore    // sorted by key; never nil
+}
+
+// ReadLatest reads the latest finished scan, its rows and the ignores in one transaction.
+// FinishScan drops the rows of earlier scans, so a scan that finished between two separate
+// reads would leave the older scan with no rows; and the lists are only right with the
+// ignores of the same moment (spec 6.5).
+func (s *Store) ReadLatest(ctx context.Context) (Latest, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Latest{}, err
+	}
+	defer tx.Rollback() // nothing was written
+
+	out := Latest{Rows: []domain.Candidate{}}
+	if out.Scan, err = latestScan(ctx, tx); err != nil {
+		return Latest{}, err
+	}
+	if out.Scan != nil {
+		if out.Rows, err = allCandidates(ctx, tx, out.Scan.ID); err != nil {
+			return Latest{}, err
+		}
+	}
+	if out.Ignores, err = ignores(ctx, tx); err != nil {
+		return Latest{}, err
+	}
+	return out, nil
+}
+
 func latestScan(ctx context.Context, q queryer) (*ScanRecord, error) {
 	var (
 		rec      ScanRecord
@@ -156,12 +189,19 @@ func (s *Store) Candidates(ctx context.Context, scanID int64, list domain.ListKi
 }
 
 func candidates(ctx context.Context, q queryer, scanID int64, list domain.ListKind) ([]domain.Candidate, error) {
-	rows, err := q.QueryContext(ctx, `SELECT data FROM candidates WHERE scan_id = ? AND list = ? ORDER BY key`, scanID, string(list))
+	return readCandidates(q.QueryContext(ctx, `SELECT data FROM candidates WHERE scan_id = ? AND list = ? ORDER BY key`, scanID, string(list)))
+}
+
+func allCandidates(ctx context.Context, q queryer, scanID int64) ([]domain.Candidate, error) {
+	return readCandidates(q.QueryContext(ctx, `SELECT data FROM candidates WHERE scan_id = ? ORDER BY list, key`, scanID))
+}
+
+// readCandidates decodes the rows of a query on the data column. The slice is never nil.
+func readCandidates(rows *sql.Rows, err error) ([]domain.Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
 	out := []domain.Candidate{}
 	for rows.Next() {
 		var data string

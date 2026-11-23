@@ -153,14 +153,14 @@ func TestScanLifecycle(t *testing.T) {
 	}
 }
 
-func TestLatestListReturnsAScanWithItsOwnRows(t *testing.T) {
+func TestReadLatestReturnsAScanWithItsOwnRowsAndTheIgnores(t *testing.T) {
 	s := open(t)
-	rec, rows, err := s.LatestList(ctx, domain.ListMovies)
-	if rec != nil || rows == nil || len(rows) != 0 || err != nil {
-		t.Fatalf("LatestList on an empty store = %v, %v, %v; want no scan and an empty, non-nil slice", rec, rows, err)
+	empty, err := s.ReadLatest(ctx)
+	if err != nil || empty.Scan != nil || empty.Rows == nil || len(empty.Rows) != 0 || empty.Ignores == nil || len(empty.Ignores) != 0 {
+		t.Fatalf("ReadLatest on an empty store = %+v, %v; want no scan and empty, non-nil slices", empty, err)
 	}
 
-	// Every scan stores one movie row keyed by the scan's number, and one torrent row.
+	// Every scan stores one movie row keyed by the scan's number, one torrent row and one held series row.
 	finish := func(n int) int64 {
 		t.Helper()
 		started := time.Date(2026, 3, 10, 12, n, 0, 0, time.UTC)
@@ -169,8 +169,9 @@ func TestLatestListReturnsAScanWithItsOwnRows(t *testing.T) {
 			t.Fatal(err)
 		}
 		candidates := []domain.Candidate{
-			{List: domain.ListMovies, Key: "tmdb:" + string(rune('0'+n)), Torrents: []domain.TorrentInfo{}},
 			{List: domain.ListTorrents, Key: "hash:abc", Torrents: []domain.TorrentInfo{{ID: "abc"}}},
+			{List: domain.ListSeries, Key: "tvdb:100:s1", Scope: domain.ScopeSeason, Season: 1, Waiting: true, Torrents: []domain.TorrentInfo{}},
+			{List: domain.ListMovies, Key: "tmdb:" + string(rune('0'+n)), Torrents: []domain.TorrentInfo{}},
 		}
 		if err := s.FinishScan(ctx, id, started.Add(time.Second), domain.ScanSummary{}, candidates); err != nil {
 			t.Fatal(err)
@@ -180,27 +181,38 @@ func TestLatestListReturnsAScanWithItsOwnRows(t *testing.T) {
 
 	finish(1)
 	second := finish(2)
+	ig := domain.Ignore{Kind: domain.IgnoreMovie, Key: "tmdb:2", Title: "Two", CreatedAt: time.Date(2026, 3, 11, 9, 0, 0, 0, time.UTC)}
+	if err := s.AddIgnores(ctx, []domain.Ignore{ig}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.BeginScan(ctx, time.Date(2026, 3, 10, 13, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err) // a scan that is still running is not the latest scan
 	}
 
-	rec, rows, err = s.LatestList(ctx, domain.ListMovies)
-	if err != nil || rec == nil || rec.ID != second {
-		t.Fatalf("LatestList = %+v, %v; want scan %d", rec, err, second)
+	got, err := s.ReadLatest(ctx)
+	if err != nil || got.Scan == nil || got.Scan.ID != second {
+		t.Fatalf("ReadLatest = %+v, %v; want scan %d", got, err, second)
 	}
-	if len(rows) != 1 || rows[0].Key != "tmdb:2" {
-		t.Errorf("rows = %+v, want only the second scan's movie row", rows)
+	var keys []string
+	for _, r := range got.Rows {
+		keys = append(keys, string(r.List)+"/"+r.Key)
 	}
-	if _, rows, _ := s.LatestList(ctx, domain.ListSeries); rows == nil || len(rows) != 0 {
-		t.Errorf("series rows = %v, want an empty, non-nil slice", rows)
+	if want := []string{"movies/tmdb:2", "series/tvdb:100:s1", "torrents/hash:abc"}; !reflect.DeepEqual(keys, want) {
+		t.Fatalf("rows = %v, want %v", keys, want)
+	}
+	if !got.Rows[1].Waiting {
+		t.Errorf("the held series row came back with Waiting false: %+v", got.Rows[1])
+	}
+	if len(got.Ignores) != 1 || got.Ignores[0].Key != "tmdb:2" {
+		t.Errorf("ignores = %+v, want tmdb:2", got.Ignores)
 	}
 }
 
 // With one connection, a read transaction must give it back, or the next write waits forever.
-func TestLatestListReleasesTheDatabase(t *testing.T) {
+func TestReadLatestReleasesTheDatabase(t *testing.T) {
 	s := open(t)
 	for i := 0; i < 3; i++ {
-		if _, _, err := s.LatestList(ctx, domain.ListMovies); err != nil {
+		if _, err := s.ReadLatest(ctx); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -212,7 +224,7 @@ func TestLatestListReleasesTheDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("a write after LatestList did not get the database")
+		t.Fatal("a write after ReadLatest did not get the database")
 	}
 }
 
