@@ -15,7 +15,8 @@ type Row struct {
 }
 
 // WholeTorrents applies the whole-torrent rule to the rows of the watched lists. It fills
-// Candidates and Waiting of each list from its Rows.
+// Candidates, Held and Waiting of each list from its Rows: Held keeps the rows of groups that
+// wait, marked Waiting, so that ignores can be applied to the stored rows later (spec 6.5).
 //
 // Rows whose files are backed by the same torrent, or that delete the same library file,
 // form a group, directly or through a chain. A torrent blocks its group when it is queued
@@ -42,7 +43,7 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 	}
 	var rows []entry
 	for _, l := range lists {
-		l.Candidates, l.Waiting = nil, 0
+		l.Candidates, l.Held, l.Waiting = nil, nil, 0
 		for i := range l.Rows {
 			rows = append(rows, entry{l, &l.Rows[i]})
 		}
@@ -138,6 +139,9 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 		}
 		if waits {
 			for _, i := range group {
+				c := rows[i].row.Candidate
+				c.Torrents, c.BelowSeedMin, c.TiedWith, c.Waiting = []domain.TorrentInfo{}, false, nil, true
+				rows[i].list.Held = append(rows[i].list.Held, c)
 				rows[i].list.Waiting++
 			}
 			continue
@@ -189,6 +193,7 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 	}
 	for _, l := range lists {
 		sortByKey(l.Candidates)
+		sortByKey(l.Held)
 	}
 }
 

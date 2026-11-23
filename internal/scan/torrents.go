@@ -9,10 +9,11 @@ import (
 // ListResult is one computed list plus the counts shown in the scan summary.
 type ListResult struct {
 	Candidates []domain.Candidate
-	Protected  int   // items held back by a protection rule
-	Unmatched  int   // items that could not be matched to the media server
-	Rows       []Row // watched lists: the qualifying rows before the whole-torrent rule
-	Waiting    int   // watched lists: rows held back by the whole-torrent rule
+	Protected  int                // items held back by a protection rule
+	Unmatched  int                // items that could not be matched to the media server
+	Rows       []Row              // watched lists: the qualifying rows before the whole-torrent rule
+	Waiting    int                // watched lists: rows held back by the whole-torrent rule
+	Held       []domain.Candidate // watched lists: the rows held back by the whole-torrent rule, marked Waiting
 }
 
 // TorrentsInput is everything the orphan torrent list is computed from.

@@ -50,10 +50,13 @@ type Candidate struct {
 	StillAiring  bool          `json:"stillAiring,omitempty"` // series rows
 	WatchedBy    []string      `json:"watchedBy,omitempty"`   // user names
 	WatchedAt    *time.Time    `json:"watchedAt,omitempty"`
-	Reason       string        `json:"reason,omitempty"`   // torrent list: ReasonOrphan or ReasonUnlinked
-	Torrents     []TorrentInfo `json:"torrents"`           // media rows: torrents Delete would remove; torrent rows: the torrent itself
-	BelowSeedMin bool          `json:"belowSeedMin"`       // true when any of Torrents is below the seeding minimum
-	TiedWith     []RowRef      `json:"tiedWith,omitempty"` // rows that are deleted together with this one (spec 6.3)
+	Reason       string        `json:"reason,omitempty"`    // torrent list: ReasonOrphan or ReasonUnlinked
+	Torrents     []TorrentInfo `json:"torrents"`            // media rows: torrents Delete would remove; torrent rows: the torrent itself
+	BelowSeedMin bool          `json:"belowSeedMin"`        // true when any of Torrents is below the seeding minimum
+	TiedWith     []RowRef      `json:"tiedWith,omitempty"`  // rows that are deleted together with this one (spec 6.3)
+	Waiting      bool          `json:"waiting,omitempty"`   // held back by the whole-torrent rule (spec 6.3); only the ignored view returns such rows
+	IgnoredAt    *time.Time    `json:"ignoredAt,omitempty"` // ignored view: when the user ignored the row
+	NotInScan    bool          `json:"notInScan,omitempty"` // ignored view: the latest scan has no such row, so only its key and title are known
 }
 
 // RowRef names another row.

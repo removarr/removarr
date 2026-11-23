@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 // Stored scans and the API depend on these names.
@@ -34,4 +35,12 @@ func TestJSONNamesOfTheTiedAndOutsideAndWaitingFields(t *testing.T) {
 
 	has(keys(ListSummary{Waiting: 2}), "waiting", true)
 	has(keys(ListSummary{}), "waiting", true)
+
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	has(keys(Candidate{Waiting: true, IgnoredAt: &at, NotInScan: true}), "waiting", true)
+	has(keys(Candidate{Waiting: true, IgnoredAt: &at, NotInScan: true}), "ignoredAt", true)
+	has(keys(Candidate{Waiting: true, IgnoredAt: &at, NotInScan: true}), "notInScan", true)
+	has(keys(Candidate{}), "waiting", false)
+	has(keys(Candidate{}), "ignoredAt", false)
+	has(keys(Candidate{}), "notInScan", false)
 }
