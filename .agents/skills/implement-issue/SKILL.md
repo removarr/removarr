@@ -1,14 +1,14 @@
 ---
 name: implement-issue
-description: Use when the owner asks to work on, implement, continue or pick up a GitHub issue of removarr, or to work on the next issue. Not for a question about an issue.
-argument-hint: "[issue number]"
+description: Takes one GitHub issue of removarr from open to a reviewed pull request. Use when the owner asks to work on, implement, continue or pick up an issue, or to work on the next issue. Not for a question about an issue.
+compatibility: Requires git and the GitHub CLI (gh), signed in with an account that can see the repository.
 ---
 
 # Implementing an issue
 
 One run takes one issue from open to a reviewed pull request. An agent does the run on its own. The owner checks the result and merges it.
 
-`AGENTS.md` holds the rules for every change. This skill holds the order of work. Its scripts are in `${CLAUDE_SKILL_DIR}/scripts`, which is the `scripts` folder next to this file.
+`AGENTS.md` holds the rules for every change. This skill holds the order of work. Its scripts are in the `scripts` folder next to this file. The commands below give their path from the root of the repository.
 
 "The checks" in this skill are the commands that `AGENTS.md` lists as checks under "Commands": formatting, vet, the tests, the race tests and the build. Starting the server is not one of them.
 
@@ -98,11 +98,11 @@ GitHub reads "close", "fix" or "resolve" in front of an issue number as an order
 
 ```
 gh pr edit <PR> --add-reviewer @copilot
-bash ${CLAUDE_SKILL_DIR}/scripts/wait-for-copilot.sh <PR>
+bash .agents/skills/implement-issue/scripts/wait-for-copilot.sh <PR>
 gh pr checks <PR> --watch
 ```
 
-- Start `wait-for-copilot.sh` in the background, so that the session is told when it ends. It looks every two minutes for up to 30 minutes. Do not look by hand in the meantime.
+- `wait-for-copilot.sh` looks every two minutes for up to 30 minutes. If your tool tells you when a background command ends, start it in the background. If not, run it and wait for it to end. Do not look by hand in the meantime.
 - It ends with 0 when the review is there, and prints the summary of the review and the open threads. It ends with 2 when Copilot was not asked, with 3 when no review came, with 4 when the pull request is no longer open.
 - After a 3, ask Copilot once more and wait once more. If again no review comes, go on without it and say so in the pull request and in the report.
 - CI must be green. Fix a red CI before anything else. If `gh pr checks` reports no checks, CI has not started yet: run it again a minute later.
@@ -123,9 +123,9 @@ Use `receiving-code-review`. Copilot is an outside reviewer and has not read the
 - The commands:
 
   ```
-  bash ${CLAUDE_SKILL_DIR}/scripts/review-threads.sh <PR>
+  bash .agents/skills/implement-issue/scripts/review-threads.sh <PR>
   gh api "repos/{owner}/{repo}/pulls/<PR>/comments/<comment ID>/replies" -F body=@reply.md
-  bash ${CLAUDE_SKILL_DIR}/scripts/review-threads.sh <PR> resolve <comment ID> [<comment ID> ...]
+  bash .agents/skills/implement-issue/scripts/review-threads.sh <PR> resolve <comment ID> [<comment ID> ...]
   gh pr comment <PR> --body-file reply.md
   ```
 
