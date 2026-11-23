@@ -7,3 +7,4 @@
 .env
 .remember/
 .DS_Store
+/.claude/worktrees/
