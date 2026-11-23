@@ -26,6 +26,7 @@ type Providers struct {
 // Store is the persistence a scan needs. *store.Store satisfies it.
 type Store interface {
 	BeginScan(ctx context.Context, startedAt time.Time) (int64, error)
+	Ignores(ctx context.Context) ([]domain.Ignore, error)
 	FinishScan(ctx context.Context, id int64, finishedAt time.Time, summary domain.ScanSummary, candidates []domain.Candidate) error
 }
 
@@ -122,6 +123,10 @@ func (s *Service) run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load rules: %w", err)
 	}
+	ignores, err := s.Store.Ignores(ctx)
+	if err != nil {
+		return fmt.Errorf("load ignores: %w", err)
+	}
 	p, err := s.Build(ctx)
 	if err != nil {
 		return fmt.Errorf("load connections: %w", err)
@@ -132,6 +137,7 @@ func (s *Service) run(ctx context.Context) error {
 	}
 
 	fetched := s.fetch(ctx, p, rules)
+	fetched.Ignored = scan.NewIgnoreSet(ignores).Keys()
 	s.setPhase("applying the rules")
 	summary, candidates := Compute(rules, s.Now(), fetched)
 	s.setPhase("saving")
@@ -177,6 +183,9 @@ type Fetched struct {
 	// by download ID. nil means the content check did not run; an empty map means it ran
 	// and no download needed its files.
 	Files map[string][]domain.DownloadFile
+	// Ignored holds the keys the user had ignored when the scan started. A scan uses them
+	// only for the per-season merge (spec 6.3); the lists apply ignores when they are read.
+	Ignored map[string]bool
 }
 
 // fetch reads the apps one after another. The media server's library is read only when
@@ -284,7 +293,8 @@ const (
 
 // Compute applies the rules to what was fetched. A list is produced only when everything
 // it depends on was read completely (spec 6.8, rule 5); otherwise its summary carries the
-// reason and it has no rows.
+// reason and it has no rows. The candidates include the rows the whole-torrent rule holds
+// back, marked Waiting: the lists apply ignores to them when they are read (spec 6.5).
 func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, []domain.Candidate) {
 	summary := domain.ScanSummary{Lists: map[domain.ListKind]domain.ListSummary{}, RootFolders: []domain.RootFolder{}}
 	candidates := []domain.Candidate{}
@@ -323,6 +333,7 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 			Candidates: len(res.Candidates), Protected: res.Protected, Unmatched: res.Unmatched, Waiting: res.Waiting,
 		}
 		candidates = append(candidates, res.Candidates...)
+		candidates = append(candidates, res.Held...)
 	}
 
 	noUsers := ""
@@ -351,7 +362,7 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 	}
 	if seriesProblem == "" {
 		res := scan.Series(scan.SeriesInput{
-			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value, Snapshot: f.Series.Value,
+			Rules: rules, Now: now, Users: f.Users, Library: f.Library.Value, Snapshot: f.Series.Value, Ignored: f.Ignored,
 		})
 		series = &res
 		watched = append(watched, series)
