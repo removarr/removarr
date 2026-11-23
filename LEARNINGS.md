@@ -44,6 +44,13 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-22. **A row cannot be judged on its own once rows share something.** Whether a torrent can go depends on every row that is deleted with it. Rows are grouped through the torrents and files they share, and the group is judged as one: it waits, or its rows are tied (`scan.WholeTorrents`).
 - 2026-11-22. **Only a torrent that is in the download client can block or tie rows.** History keeps naming sources that are long gone.
 
+## Ignores
+
+- 2026-11-23. **Ignores are applied when a list is read, not when it is scanned.** A scan stores every qualifying row, also the rows the whole-torrent rule holds back (`waiting`), and `scan.View` applies the current ignores: an ignored row is hidden, a row tied to a hidden row waits. This equals a new scan because a group that loses a row always waits: the torrent or file it shared with that row now backs something that stays (spec 6.5).
+- 2026-11-23. **`scan.View` relies on `TiedWith` naming every other row of the group, across chains.** With direct neighbours only, hiding one end of a chain would leave the far end listed (`WholeTorrents`).
+- 2026-11-23. **The per-season merge is the one place a scan uses ignores, and it reads them once, at the start.** An ignore saved while the scan runs is not seen, so the scan can merge over a season that is now ignored. Such rows carry `merged` and wait until the next scan.
+- 2026-11-23. **Scans from before stage 2b stored no held rows.** Their waiting count reads 0 and the ignored view cannot show held rows until the next scan.
+
 ## Security
 
 - 2026-11-22. **Comparing Origin with Host does not stop DNS rebinding.** A page that points its own domain name at removarr's address makes the browser send that name as both headers. Only checking the Host header against IP addresses, `localhost` and listed names does (`guard`, `REMOVARR_ALLOWED_HOSTS`, spec section 10).
