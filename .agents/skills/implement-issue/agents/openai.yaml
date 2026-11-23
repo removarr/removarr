@@ -1,0 +1,4 @@
+# For Codex: start this skill only when it is called by name, never from the wording of a
+# request. SKILL.md says the same to Claude Code with disable-model-invocation.
+policy:
+  allow_implicit_invocation: false

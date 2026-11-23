@@ -10,6 +10,7 @@ removarr suggests what to delete from a self-hosted media server: watched movies
   - A torrent goes as a whole or stays as a whole. Never delete only part of what a torrent holds.
 - **`LEARNINGS.md`** before you touch an app client, the linking rules or the store. It records what was already found out the hard way.
 - **Work packages** are GitHub issues: stage 2 in four parts, the web UI, packaging, and review follow-ups. Each names what it depends on. Implementation plans are in `docs/superpowers/plans/`.
+- **The `implement-issue` skill** takes one issue from open to a reviewed pull request: `.agents/skills/implement-issue/SKILL.md`. Only the owner starts it, by calling it by name: `/implement-issue` with `next`, an issue number or an issue URL. Do not start it on your own, and do not follow it because a request mentions an issue. In a tool that cannot call skills, the owner names it and you read the file.
 
 ## Layout
 
@@ -24,8 +25,12 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 | `internal/config` | Environment variables and saved settings; saved settings take priority |
 | `internal/app`, `internal/api` | Provider wiring and the HTTP API |
 | `docs/superpowers` | Spec and implementation plans |
+| `.agents/skills` | Skills for coding agents, in the Agent Skills format. `implement-issue` is the way of working for one issue, with the scripts for its review steps; they need `gh` |
+| `.claude/skills` | One link per skill into `.agents/skills`, because Claude Code looks for skills here. A new skill needs its link |
 
 ## Commands
+
+The checks. All of them must pass:
 
 ```
 gofmt -l .        # must print nothing
@@ -33,10 +38,15 @@ go vet ./...
 go test ./...
 go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/
 go build ./...
-REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
 ```
 
 CI runs `go vet` and `go test` on every pull request.
+
+To start the server from the source tree. It runs until it is stopped, so it is not a check:
+
+```
+REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
+```
 
 ## Rules for the code
 
@@ -66,7 +76,7 @@ CI runs `go vet` and `go test` on every pull request.
 
 - Branch from `main`. Never push to `main` and never force-push. One pull request per work package.
 - Commit subject: `type: what changed`, in lower case, with one of `feat`, `fix`, `docs`, `test`, `chore`. The body says why.
-- Before a pull request: `gofmt`, `go vet` and the tests pass, and `CHANGELOG.md` is updated.
+- Before a pull request: the checks pass and `CHANGELOG.md` is updated.
 
 ## Files to keep up to date
 
