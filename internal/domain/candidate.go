@@ -57,6 +57,9 @@ type Candidate struct {
 	Waiting      bool          `json:"waiting,omitempty"`   // held back by the whole-torrent rule (spec 6.3); only the ignored view returns such rows
 	IgnoredAt    *time.Time    `json:"ignoredAt,omitempty"` // ignored view: when the user ignored the row
 	NotInScan    bool          `json:"notInScan,omitempty"` // ignored view: the latest scan has no such row, so only its key and title are known
+	// Merged marks a series row that the per-season merge produced (spec 6.3). A season
+	// ignore holds such a row back until the next scan (spec 6.5).
+	Merged bool `json:"merged,omitempty"`
 }
 
 // RowRef names another row.

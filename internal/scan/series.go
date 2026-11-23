@@ -104,7 +104,10 @@ func Series(in SeriesInput) ListResult {
 		var rows []Row
 		switch {
 		case all && !(perSeason && anySeasonIgnored(in.Ignored, s, regular)):
-			rows = append(rows, b.seriesRow(s, regular, seasons))
+			row := b.seriesRow(s, regular, seasons)
+			// Only per-season mode merges: there a season ignore made during the scan holds the row back (View).
+			row.Candidate.Merged = perSeason
+			rows = append(rows, row)
 		case perSeason:
 			for _, a := range qualifying {
 				rows = append(rows, b.seasonRow(s, a))

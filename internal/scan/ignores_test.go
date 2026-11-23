@@ -183,3 +183,38 @@ func TestIgnoreSetHides(t *testing.T) {
 		t.Errorf("Keys() = %v", got)
 	}
 }
+
+// A series row the per-season merge produced while one of its seasons was not yet ignored
+// waits, and so does every row tied to it (spec 6.5).
+func TestViewHoldsBackASeriesRowMergedOverANowIgnoredSeason(t *testing.T) {
+	none := []domain.TorrentInfo{}
+	rows := []domain.Candidate{
+		{List: domain.ListMovies, Key: "tmdb:30", Torrents: none, TiedWith: tie(domain.ListSeries, "tvdb:300")},
+		{List: domain.ListMovies, Key: "tmdb:40", Torrents: none, TiedWith: tie(domain.ListSeries, "tvdb:400")},
+		{List: domain.ListSeries, Key: "tvdb:300", Scope: domain.ScopeSeries, Merged: true, Torrents: none, TiedWith: tie(domain.ListMovies, "tmdb:30")},
+		{List: domain.ListSeries, Key: "tvdb:400", Scope: domain.ScopeSeries, Torrents: none, TiedWith: tie(domain.ListMovies, "tmdb:40")}, // whole-series mode
+		{List: domain.ListSeries, Key: "tvdb:500", Scope: domain.ScopeSeries, Merged: true, Torrents: none},
+	}
+	set := NewIgnoreSet([]domain.Ignore{
+		ignore(domain.IgnoreSeason, "tvdb:300:s1"),
+		ignore(domain.IgnoreSeason, "tvdb:400:s1"),
+	})
+
+	want := map[domain.ListKind]viewWant{
+		domain.ListMovies: {shown: []string{"tmdb:40"}, ignored: []string{}, waiting: 1},
+		domain.ListSeries: {shown: []string{"tvdb:400", "tvdb:500"}, ignored: []string{"tvdb:300:s1", "tvdb:400:s1"}, waiting: 1},
+	}
+	views := map[domain.ListKind]ListView{}
+	for list, w := range want {
+		v := View(list, rows, set)
+		views[list] = v
+		if got := (viewWant{shown: keys(v.Shown), ignored: keys(v.Ignored), waiting: v.Waiting}); !reflect.DeepEqual(got, w) {
+			t.Errorf("%s: got %+v, want %+v", list, got, w)
+		}
+	}
+	for _, c := range views[domain.ListSeries].Ignored {
+		if !c.NotInScan || c.Scope != domain.ScopeSeason || c.Season != 1 {
+			t.Errorf("season ignore entry %s = %+v; want it by key and title, not in the scan", c.Key, c)
+		}
+	}
+}
