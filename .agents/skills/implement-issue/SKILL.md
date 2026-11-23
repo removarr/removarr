@@ -161,7 +161,8 @@ A run is done when all of this holds:
 - Every task of the plan is built and reviewed, and the findings of the whole-branch review are fixed or ruled on.
 - The checks pass on the last commit and CI is green.
 - The description of the pull request is current and says `Closes #N`.
-- Copilot has reviewed, or failed to twice and the pull request says so. Every thread and every finding in a review summary has an answer. The only open threads are those left to the owner.
+- Copilot has answered the latest request to review, or failed to twice and the pull request says so. An earlier review does not count while a later request is waiting. `wait-for-copilot.sh` tells which it is: it ends with 0 at once when the latest request is answered.
+- Every thread and every finding in a review summary has an answer. The only open threads are those left to the owner.
 - In the issue, the boxes that the pull request covers are ticked, and each item under "Carried over" says how it ended.
 - Issue #8 has the findings that were not fixed, and the items this pull request resolved are ticked there.
 - `LEARNINGS.md` has what the next run would otherwise find out again.
@@ -200,8 +201,11 @@ A run can break off. GitHub and git show where it stopped:
 | A plan file that is not waiting at the plan gate, and tasks that are not built | Step 5, at the first task that is not built |
 | Every task built, no pull request | Step 6 |
 | A pull request that Copilot was not asked to review | Step 8 |
+| A pull request with a request to Copilot that has no review yet, whatever earlier reviews there are | Step 8, at the waiting. Do not ask again |
 | A pull request with open threads that have no reply, or with a review summary whose findings have no answer | Step 9 |
-| Every thread and every finding answered, and CI green | Step 10 |
+| The latest request to Copilot answered, every thread and every finding answered, and CI green | Step 10 |
+
+To tell the rows about Copilot apart, run `wait-for-copilot.sh` with `0` as the minutes: it ends with 2 when Copilot was not asked, with 3 when a request is waiting, and with 0 when the latest request is answered.
 
 The ledger of `subagent-driven-development` is in `.superpowers/sdd/` in the worktree and not in git. If the worktree is gone, the plan and `git log` show which tasks are built.
 
