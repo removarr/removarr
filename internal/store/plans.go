@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	// ErrPlanNotFound is returned for a plan ID that is not stored.
+	// ErrPlanNotFound is returned for a plan ID that is not stored: it never was, or it was taken or discarded.
 	ErrPlanNotFound = errors.New("no such plan")
 	// ErrPlanExpired is returned for a plan that can no longer be executed (spec 6.8, rule 2).
 	ErrPlanExpired = errors.New("the plan has expired")
@@ -40,23 +40,38 @@ func (s *Store) SavePlan(ctx context.Context, p domain.Plan) error {
 	return tx.Commit()
 }
 
-// Plan returns the stored plan with this ID. It returns ErrPlanNotFound when there is none,
-// and ErrPlanExpired when the plan expired by now.
-func (s *Store) Plan(ctx context.Context, id string, now time.Time) (domain.Plan, error) {
-	var data string
-	err := s.db.QueryRowContext(ctx, `SELECT data FROM plans WHERE id = ?`, id).Scan(&data)
+// TakePlan returns the stored plan with this ID and drops every stored plan, in one
+// transaction: a plan runs once, and the other pending plans were built from data that the
+// execution changes (spec 6.11). The expires_at column decides whether the plan can still
+// run, so there is one expiry source. An unknown plan gives ErrPlanNotFound and an expired
+// one ErrPlanExpired; both change nothing.
+func (s *Store) TakePlan(ctx context.Context, id string, now time.Time) (domain.Plan, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	defer tx.Rollback()
+
+	var (
+		data    string
+		expires int64
+	)
+	err = tx.QueryRowContext(ctx, `SELECT data, expires_at FROM plans WHERE id = ?`, id).Scan(&data, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Plan{}, ErrPlanNotFound
 	}
 	if err != nil {
 		return domain.Plan{}, err
 	}
+	if expires <= now.UnixNano() {
+		return domain.Plan{}, ErrPlanExpired
+	}
 	var p domain.Plan
 	if err := json.Unmarshal([]byte(data), &p); err != nil {
 		return domain.Plan{}, fmt.Errorf("plan %s: %w", id, err)
 	}
-	if p.Expired(now) {
-		return domain.Plan{}, ErrPlanExpired
+	if _, err := tx.ExecContext(ctx, `DELETE FROM plans`); err != nil {
+		return domain.Plan{}, err
 	}
-	return p, nil
+	return p, tx.Commit()
 }

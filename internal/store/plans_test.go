@@ -22,27 +22,61 @@ func testPlan(id string, built time.Time) domain.Plan {
 	}
 }
 
-func TestASavedPlanCanBeReadUntilItExpires(t *testing.T) {
+func TestTakingAPlanReturnsItAndDropsEveryPlan(t *testing.T) {
 	s := open(t)
 	built := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
 	want := testPlan("abc", built)
-	if err := s.SavePlan(ctx, want); err != nil {
-		t.Fatal(err)
+	for _, p := range []domain.Plan{want, testPlan("other", built)} {
+		if err := s.SavePlan(ctx, p); err != nil {
+			t.Fatal(err)
+		}
 	}
-	got, err := s.Plan(ctx, "abc", built.Add(domain.PlanLifetime-time.Second))
+	got, err := s.TakePlan(ctx, "abc", built.Add(domain.PlanLifetime-time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("read %+v, want %+v", got, want)
+		t.Errorf("took %+v, want %+v", got, want)
 	}
-	if _, err := s.Plan(ctx, "abc", built.Add(domain.PlanLifetime)); !errors.Is(err, ErrPlanExpired) {
-		t.Errorf("at ten minutes: err = %v, want ErrPlanExpired", err)
+	if n := count(t, s, `SELECT COUNT(*) FROM plans`); n != 0 {
+		t.Errorf("%d plans left, want none: the other plan is discarded too", n)
+	}
+	if _, err := s.TakePlan(ctx, "abc", built); !errors.Is(err, ErrPlanNotFound) {
+		t.Errorf("taking it again: err = %v, want ErrPlanNotFound", err)
+	}
+}
+
+func TestAnExpiredPlanCannotBeTakenAndStays(t *testing.T) {
+	s := open(t)
+	built := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	if err := s.SavePlan(ctx, testPlan("abc", built)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TakePlan(ctx, "abc", built.Add(domain.PlanLifetime)); !errors.Is(err, ErrPlanExpired) {
+		t.Fatalf("at ten minutes: err = %v, want ErrPlanExpired", err)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM plans`); n != 1 {
+		t.Errorf("%d plans, want the refused plan left as it was", n)
+	}
+}
+
+func TestTheStoredExpiryColumnDecides(t *testing.T) {
+	s := open(t)
+	built := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	if err := s.SavePlan(ctx, testPlan("abc", built)); err != nil {
+		t.Fatal(err)
+	}
+	// The JSON still says ten minutes; the column says one.
+	if _, err := s.db.ExecContext(ctx, `UPDATE plans SET expires_at = ?`, built.Add(time.Minute).UnixNano()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TakePlan(ctx, "abc", built.Add(2*time.Minute)); !errors.Is(err, ErrPlanExpired) {
+		t.Errorf("err = %v, want ErrPlanExpired from the column", err)
 	}
 }
 
 func TestAnUnknownPlanIsNotFound(t *testing.T) {
-	if _, err := open(t).Plan(ctx, "nope", time.Now()); !errors.Is(err, ErrPlanNotFound) {
+	if _, err := open(t).TakePlan(ctx, "nope", time.Now()); !errors.Is(err, ErrPlanNotFound) {
 		t.Errorf("err = %v, want ErrPlanNotFound", err)
 	}
 }
@@ -62,7 +96,7 @@ func TestSavingAPlanDropsThePlansThatExpired(t *testing.T) {
 	if n := count(t, s, `SELECT COUNT(*) FROM plans`); n != 2 {
 		t.Errorf("%d plans stored, want 2: the expired one is dropped", n)
 	}
-	if _, err := s.Plan(ctx, "old", built); !errors.Is(err, ErrPlanNotFound) {
+	if _, err := s.TakePlan(ctx, "old", built); !errors.Is(err, ErrPlanNotFound) {
 		t.Errorf("old plan: err = %v, want ErrPlanNotFound", err)
 	}
 }

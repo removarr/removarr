@@ -50,3 +50,33 @@ func TestJSONNamesOfTheTiedAndOutsideAndWaitingFields(t *testing.T) {
 	has(keys(Candidate{Waiting: true, WaitReason: "It waits."}), "waitReason", true)
 	has(keys(Candidate{}), "waitReason", false)
 }
+
+// The history stores a step as either a media manager step or a torrent, never both.
+func TestJSONOfAStepResultNamesOnlyItsOwnKind(t *testing.T) {
+	keys := func(v any) map[string]json.RawMessage {
+		t.Helper()
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	manager := keys(StepResult{Manager: &ManagerStep{Manager: "movies"}, Result: ResultDone})
+	if _, ok := manager["torrent"]; ok {
+		t.Errorf("a manager step has a torrent key: %v", manager)
+	}
+	if _, ok := manager["manager"]; !ok {
+		t.Errorf("a manager step has no manager key: %v", manager)
+	}
+	torrent := keys(StepResult{Torrent: &TorrentInfo{ID: "h1"}, KeepData: true, Result: ResultGone})
+	if _, ok := torrent["manager"]; ok {
+		t.Errorf("a torrent step has a manager key: %v", torrent)
+	}
+	if _, ok := torrent["keepData"]; !ok {
+		t.Errorf("a torrent step without keepData: %v", torrent)
+	}
+}
