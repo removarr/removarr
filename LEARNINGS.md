@@ -51,6 +51,13 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-23. **The per-season merge is the one place a scan uses ignores, and it reads them once, at the start.** An ignore saved while the scan runs is not seen, so the scan can merge over a season that is now ignored. Such rows carry `merged` and wait until the next scan.
 - 2026-11-23. **Scans from before stage 2b stored no held rows.** Their waiting count reads 0 and the ignored view cannot show held rows until the next scan.
 
+## Plans
+
+- 2026-11-24. **A plan reads everything a scan reads.** Whether a torrent can go depends on everything else it backs, so re-reading only the selected items cannot decide it. The planner reads and evaluates through `scanner.Read` and `scanner.Evaluate`, the code a scan uses (spec 6.10).
+- 2026-11-24. **One read is not proof.** History is read before the queue, so a download imported between the two reads looks unlinked for that read. A plan removes a torrent only when the latest scan and the planner's read agree on it, in both directions; a row that waited in the latest scan is skipped (`changedSinceScan`).
+- 2026-11-24. **Shared data is decided against everything that stays.** One staying torrent with an unknown content path keeps the data of every torrent a plan removes, and paths are compared without regard to case, so two Linux directories that differ only in case keep their data. Both err toward keeping. A plan's `keepData` assumes every item succeeds; the executor must decide again from the torrents it actually removed.
+- 2026-11-24. **A test fixture whose file IDs equal its episode IDs hides swapped IDs.** Unmonitoring files instead of episodes passed every test until the IDs differed. Sonarr's episode IDs are global, so such a swap would unmonitor episodes of other series.
+
 ## Security
 
 - 2026-11-22. **Comparing Origin with Host does not stop DNS rebinding.** A page that points its own domain name at removarr's address makes the browser send that name as both headers. Only checking the Host header against IP addresses, `localhost` and listed names does (`guard`, `REMOVARR_ALLOWED_HOSTS`, spec section 10).

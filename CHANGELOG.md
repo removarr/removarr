@@ -10,6 +10,28 @@ What changed in removarr, written for the person who runs it.
 
 ## Unreleased
 
+### Stage 2c: delete plans from live data (issue #4)
+
+removarr can now say exactly what deleting the selected rows would do. Still read-only towards the apps: a plan is built and stored, never executed.
+
+#### Scope
+
+- **Plans:** `POST /api/plans` with `{"rows":[{"list":"movies","key":"tmdb:603"}]}` reads every app again, the way a scan does, and returns the plan (201). Building one takes about as long as a scan. One plan is built at a time.
+- **What a plan holds:** one item per selected row, or per group of tied rows, which are added and marked. Per item: the media manager steps (remove the movie; remove an ended series; or delete the episode files of a season or of a series that is still airing, unmonitor those episodes and the seasons among them that have finished airing), the torrents removed with their seeding flag, data outside the library, whether their data is kept and whether only their file sizes tie them to the item, and the associated torrents that stay, with the reason.
+- **Skipped rows:** a row that is ignored, waits, is tied to an ignored row, no longer qualifies, belongs to a list that cannot be produced, is not in the latest scan, waited in the latest scan, or changed since the scan in the torrents it would remove or keep, is listed with the reason. A torrent row whose torrent a selected movie or series removes anyway is skipped and names it.
+- **Shared data:** a torrent whose content path equals, contains or lies inside the path of a torrent that stays is removed as an entry only and keeps its data. So does every torrent when a path is unknown.
+- **Expiry:** a plan is stored for ten minutes.
+- **Ignored view:** a row the scan holds back now says what it waits for, in `waitReason`.
+
+#### Deployment
+
+- Database migration `0003_plans` runs on start and adds the `plans` table.
+- Scan again after updating, so that held rows carry `waitReason`. Rows from an older scan say only that they wait.
+
+#### Breaking changes
+
+- None.
+
 ### Stage 2b: ignore and un-ignore (issue #3)
 
 Rows you do not want suggested can be hidden and brought back. Still read-only towards the apps: nothing is deleted yet.

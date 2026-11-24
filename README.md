@@ -49,6 +49,11 @@ Choose whose watch state counts, start a scan, then read the lists:
     curl -X DELETE -H 'Content-Type: application/json' -H 'X-Removarr-Request: 1' \
       -d '{"rows":[{"list":"movies","key":"tmdb:603"}]}' localhost:7272/api/ignores
 
+See what deleting rows would do. This builds a plan from live data and deletes nothing:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'X-Removarr-Request: 1' \
+      -d '{"rows":[{"list":"movies","key":"tmdb:603"}]}' localhost:7272/api/plans
+
 removarr has no login. Run it only on a network you trust, and do not expose it to the internet.
 
 ## Reaching removarr by name
