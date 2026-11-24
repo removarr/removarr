@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a.
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -189,6 +189,10 @@ A protected series produces no series row and no season rows.
 - A series ignore hides the series row and all of its season rows. A season ignore hides only that season's row, and has no effect in whole-series mode.
 - Ignored rows are left out of counts and totals.
 - Ignores persist across scans until the user removes them.
+- Only a row of the latest scan can be ignored. Its title is kept with the ignore, so the ignored view can name it when a later scan no longer has the row.
+- Ignoring and un-ignoring take effect at once, without a new scan. A scan stores every row that qualifies, also those that wait (6.3), and the lists apply the current ignores each time they are read: an ignored row is hidden, and a row that is tied to a hidden row waits. This gives the same lists as a new scan would, because a group that loses a row always waits: the torrent or file it shared with that row now backs something that stays. One exception: un-ignoring a season does not merge season rows into a series row (6.3) before the next scan. The reverse is held back instead: a series row that a scan merged while one of its seasons was not yet ignored, because the ignore came during the scan, waits until the next scan, and so does every row tied to it.
+- The ignored view of a list shows one entry per ignore: the row as the latest scan has it, or only its key and title when the latest scan has no such row, for example a season ignore in whole-series mode. A season row hidden by an ignore of its series is not a separate entry; un-ignoring the series brings it back.
+- A row the latest scan holds back as waiting stays waiting in the ignored view and after it is un-ignored.
 
 ### 6.6 Torrents
 
@@ -363,7 +367,7 @@ One SQLite file in the config directory.
 | `settings` | Key and JSON value. Holds rules and connection values saved in the UI. |
 | `ignores` | Kind, stable key, title at the time of ignoring, created time. |
 | `scans` | Start and end time, status, summary. The last ten are kept. |
-| `candidates` | The latest scan's rows: list, stable key, row data as JSON. |
+| `candidates` | The latest scan's rows, also those that wait (6.3): list, stable key, row data as JSON. |
 | `plans` | Pending plans with their expiry. |
 | `actions` | History: time, list, key, title, size, outcome, per-step results. |
 
@@ -376,7 +380,7 @@ One SQLite file in the config directory.
 | `POST /api/scans` | Start a scan. |
 | `GET /api/scans/current` | Scan progress and result. |
 | `GET /api/candidates?list=…&ignored=…` | Rows of one list. |
-| `POST /api/ignores`, `DELETE /api/ignores` | Ignore and un-ignore rows. |
+| `POST /api/ignores`, `DELETE /api/ignores` | Ignore and un-ignore rows, in bulk. The body names each row by list and key (6.5). |
 | `POST /api/plans` | Build a plan for the selected rows. |
 | `POST /api/plans/{id}/execute` | Execute a confirmed plan. |
 | `GET /api/actions` | History, paged. |

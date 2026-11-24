@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/removarr/removarr/internal/config"
 	"github.com/removarr/removarr/internal/domain"
@@ -34,8 +35,9 @@ type Scanner interface {
 
 // Store is the part of the store the API uses. *store.Store satisfies it.
 type Store interface {
-	LatestScan(ctx context.Context) (*store.ScanRecord, error)
-	LatestList(ctx context.Context, list domain.ListKind) (*store.ScanRecord, []domain.Candidate, error)
+	ReadLatest(ctx context.Context) (store.Latest, error)
+	AddIgnores(ctx context.Context, ignores []domain.Ignore) error
+	RemoveIgnores(ctx context.Context, rows []domain.RowRef) error
 }
 
 // Apps gives access to the configured apps. *app.Apps satisfies it.
@@ -51,6 +53,7 @@ type Server struct {
 	Scanner Scanner
 	Apps    Apps
 	Log     *slog.Logger
+	Now     func() time.Time // nil means time.Now
 
 	// settingsMu lets one settings change run at a time. A change reads the saved rules,
 	// merges the request into them and saves the result, so two requests that each change
@@ -70,6 +73,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/scans", s.startScan)
 	mux.HandleFunc("GET /api/scans/current", s.currentScan)
 	mux.HandleFunc("GET /api/candidates", s.candidates)
+	mux.HandleFunc("POST /api/ignores", s.addIgnores)
+	mux.HandleFunc("DELETE /api/ignores", s.removeIgnores)
 	return guard(mux, s.Config.Env().AllowedHosts)
 }
 
@@ -175,4 +180,11 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	}
 	s.Log.Error("request failed", "error", err)
 	writeError(w, http.StatusInternalServerError, "internal error")
+}
+
+func (s *Server) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
 }

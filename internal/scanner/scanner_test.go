@@ -76,7 +76,11 @@ type fakeStore struct {
 	begun, finished int
 	summary         domain.ScanSummary
 	candidates      []domain.Candidate
+	ignores         []domain.Ignore
+	ignoresErr      error
 }
+
+func (f *fakeStore) Ignores(context.Context) ([]domain.Ignore, error) { return f.ignores, f.ignoresErr }
 
 func (f *fakeStore) BeginScan(context.Context, time.Time) (int64, error) {
 	f.begun++
@@ -619,11 +623,13 @@ func crossWorld(unwatched ...int) Fetched {
 	}
 }
 
-// rowsByKey returns the rows by key.
+// rowsByKey returns the listed rows by key; rows held back (Waiting) are left out.
 func rowsByKey(candidates []domain.Candidate) map[string]domain.Candidate {
 	out := map[string]domain.Candidate{}
 	for _, c := range candidates {
-		out[c.Key] = c
+		if !c.Waiting {
+			out[c.Key] = c
+		}
 	}
 	return out
 }
@@ -678,6 +684,15 @@ func expectWaiting(t *testing.T, summary domain.ScanSummary, candidates []domain
 	}
 	if _, found := rowsByKey(candidates)[key]; found {
 		t.Errorf("row %s is listed although it shares a torrent or a file with something that stays", key)
+	}
+	held := false
+	for _, c := range candidates {
+		if c.Key == key && c.Waiting && c.List == domain.ListSeries {
+			held = true
+		}
+	}
+	if !held {
+		t.Errorf("row %s is not stored as waiting; the lists need it to apply ignores", key)
 	}
 }
 
@@ -735,8 +750,8 @@ func TestComputeTiesRowsAcrossTheTwoLists(t *testing.T) {
 	if got := summary.Lists[domain.ListSeries]; got.Candidates != 0 || got.Waiting != 1 {
 		t.Errorf("series list = %+v, want the row waiting", got)
 	}
-	if len(candidates) != 0 {
-		t.Errorf("rows %v, want none", rowsByKey(candidates))
+	if len(rowsByKey(candidates)) != 0 {
+		t.Errorf("listed rows %v, want none", rowsByKey(candidates))
 	}
 }
 
@@ -774,4 +789,76 @@ func TestComputeHoldsBackASeasonWhoseFileHoldsAnEpisodeThatStays(t *testing.T) {
 
 	expectWaiting(t, summary, candidates, domain.SeasonKey("100", 2))
 	expectNoTorrentRows(t, summary, candidates)
+}
+
+// twoSeasonWorld is world with a second watched season of the series.
+func twoSeasonWorld() Providers {
+	p, server := world()
+	s := p.Series.(*fakeSeries)
+	s.snap.Series[0].Episodes = append(s.snap.Series[0].Episodes,
+		domain.Episode{ID: 21, Season: 2, Number: 1, File: &domain.MediaFile{ID: 21, Size: 900}})
+	server.lib.Episodes = append(server.lib.Episodes,
+		domain.ServerEpisode{SeriesID: "s1", Season: 2, Episode: 1, States: map[string]domain.UserState{"a": {Played: true}}})
+	return p
+}
+
+func storedKeys(st *fakeStore, list domain.ListKind) []string {
+	var out []string
+	for _, c := range st.candidates {
+		if c.List == list {
+			out = append(out, c.Key)
+		}
+	}
+	return out
+}
+
+// The per-season merge is the one rule a scan applies ignores to (spec 6.3); everything
+// else is applied when the lists are read.
+func TestRunDoesNotMergeSeasonsOverASeasonIgnoredBeforeTheScan(t *testing.T) {
+	r := withUser()
+	r.SeriesUnit = domain.UnitSeason
+
+	st := &fakeStore{}
+	if err := service(twoSeasonWorld(), r, st).Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedKeys(st, domain.ListSeries); !reflect.DeepEqual(got, []string{"tvdb:100"}) {
+		t.Fatalf("without an ignore: rows %v, want the merged series row", got)
+	}
+
+	st = &fakeStore{ignores: []domain.Ignore{{Kind: domain.IgnoreSeason, Key: domain.SeasonKey("100", 2), Title: "The Show"}}}
+	if err := service(twoSeasonWorld(), r, st).Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedKeys(st, domain.ListSeries); !reflect.DeepEqual(got, []string{"tvdb:100:s1", "tvdb:100:s2"}) {
+		t.Errorf("with season 2 ignored: rows %v, want both season rows", got)
+	}
+}
+
+// Ignored rows are stored like any other: the lists hide them when they are read, so that
+// un-ignoring brings them back without a new scan (spec 6.5).
+func TestRunStoresIgnoredRows(t *testing.T) {
+	p, _ := world()
+	st := &fakeStore{ignores: []domain.Ignore{{Kind: domain.IgnoreMovie, Key: "tmdb:603", Title: "The Matrix"}}}
+	if err := service(p, withUser(), st).Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedKeys(st, domain.ListMovies); !reflect.DeepEqual(got, []string{"tmdb:603"}) {
+		t.Errorf("movie rows %v, want the ignored movie stored", got)
+	}
+	if got := st.summary.Lists[domain.ListMovies].Candidates; got != 1 {
+		t.Errorf("movie candidates = %d, want 1: the scan counts before ignores", got)
+	}
+}
+
+func TestRunFailsWhenIgnoresCannotBeRead(t *testing.T) {
+	p, _ := world()
+	st := &fakeStore{ignoresErr: errors.New("disk on fire")}
+	err := service(p, withUser(), st).Run(ctx)
+	if err == nil || !strings.Contains(err.Error(), "load ignores") || !strings.Contains(err.Error(), "disk on fire") {
+		t.Fatalf("Run = %v, want an error about loading the ignores", err)
+	}
+	if st.begun != 0 || st.finished != 0 {
+		t.Errorf("scan recorded %d starts and %d finishes, want none", st.begun, st.finished)
+	}
 }

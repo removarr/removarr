@@ -109,8 +109,19 @@ func runWhole(t *testing.T, tt wholeCase) {
 		if res.Waiting != waiting {
 			t.Errorf("%s: Waiting = %d, want %d", list, res.Waiting, waiting)
 		}
+		if len(res.Held) != res.Waiting {
+			t.Errorf("%s: %d rows held, Waiting = %d; want them equal", list, len(res.Held), res.Waiting)
+		}
+		for _, h := range res.Held {
+			if !h.Waiting {
+				t.Errorf("%s: held row %s is not marked waiting", list, h.Key)
+			}
+		}
 		var got []listedRow
 		for _, c := range res.Candidates {
+			if c.Waiting {
+				t.Errorf("%s: listed row %s is marked waiting", list, c.Key)
+			}
 			if c.Torrents == nil {
 				t.Errorf("%s: %s has nil Torrents, want a non-nil list", list, c.Key)
 			}
@@ -464,13 +475,60 @@ func TestWholeTorrentsCanBeCalledTwice(t *testing.T) {
 	downloads := []domain.Download{dl("q")}
 
 	WholeTorrents(domain.DefaultRules(), x, downloads, movies)
-	wantCandidates, wantWaiting := movies.Candidates, movies.Waiting
-	if len(wantCandidates) != 1 || wantWaiting != 1 {
-		t.Fatalf("first call: %d listed, %d waiting, want 1 and 1", len(wantCandidates), wantWaiting)
+	wantCandidates, wantWaiting, wantHeld := movies.Candidates, movies.Waiting, movies.Held
+	if len(wantCandidates) != 1 || wantWaiting != 1 || len(wantHeld) != 1 {
+		t.Fatalf("first call: %d listed, %d waiting, %d held, want 1, 1 and 1", len(wantCandidates), wantWaiting, len(wantHeld))
 	}
 	WholeTorrents(domain.DefaultRules(), x, downloads, movies)
 	if !reflect.DeepEqual(movies.Candidates, wantCandidates) || movies.Waiting != wantWaiting {
 		t.Errorf("second call: candidates %+v, waiting %d; want %+v and %d", movies.Candidates, movies.Waiting, wantCandidates, wantWaiting)
+	}
+	if !reflect.DeepEqual(movies.Held, wantHeld) {
+		t.Errorf("second call: held %+v; want %+v", movies.Held, wantHeld)
+	}
+}
+
+// The rows the rule holds back are kept, so that the lists can apply ignores later without
+// a new scan (spec 6.5).
+func TestWholeTorrentsKeepsTheRowsItHoldsBack(t *testing.T) {
+	x := NewLinkIndex(ManagerFiles{
+		Manager: ManagerSeries,
+		Links:   link(map[string][]int{"pack": {1, 2}}, map[int]string{11: "pack", 21: "pack"}),
+		Files:   libFiles(11, 21),
+	})
+	series := &ListResult{Rows: []Row{
+		seasonRow(1, []int{1}, []int{11}), // the pack also backs file 21, which stays
+		seasonRow(3, []int{3}, []int{31}), // backed by nothing
+	}}
+	WholeTorrents(domain.DefaultRules(), x, []domain.Download{dl("pack")}, series)
+
+	if len(series.Candidates) != 1 || series.Candidates[0].Key != domain.SeasonKey("100", 3) || series.Candidates[0].Waiting {
+		t.Fatalf("listed %+v, want season 3 alone and not marked waiting", series.Candidates)
+	}
+	if series.Waiting != 1 || len(series.Held) != 1 {
+		t.Fatalf("Waiting = %d, Held = %+v; want one row held back", series.Waiting, series.Held)
+	}
+	h := series.Held[0]
+	if h.Key != domain.SeasonKey("100", 1) || !h.Waiting || h.Torrents == nil || len(h.Torrents) != 0 || h.TiedWith != nil || h.BelowSeedMin {
+		t.Errorf("held row = %+v; want season 1, marked waiting, with no torrents and no ties", h)
+	}
+}
+
+// Held rows are sorted by key, like the listed ones, whatever the order of the rows.
+func TestWholeTorrentsSortsTheRowsItHoldsBackByKey(t *testing.T) {
+	x := NewLinkIndex(ManagerFiles{
+		Manager: ManagerMovies,
+		Links:   link(nil, map[int]string{10: "coll", 20: "coll", 30: "coll"}),
+		Files:   libFiles(10, 20, 30),
+	})
+	movies := &ListResult{Rows: []Row{movieRow("tmdb:2", 2, 20), movieRow("tmdb:1", 1, 10)}}
+	WholeTorrents(domain.DefaultRules(), x, []domain.Download{dl("coll")}, movies)
+	var keys []string
+	for _, h := range movies.Held {
+		keys = append(keys, h.Key)
+	}
+	if want := []string{"tmdb:1", "tmdb:2"}; !reflect.DeepEqual(keys, want) {
+		t.Errorf("held %v, want %v", keys, want)
 	}
 }
 

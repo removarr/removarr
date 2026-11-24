@@ -14,10 +14,9 @@ type SeriesInput struct {
 	Users    []domain.User
 	Library  domain.Library
 	Snapshot domain.SeriesSnapshot
-	// Ignored holds the candidate keys the user has ignored. Today it only stops the per-season
-	// merge into one series row. Ignored rows are not removed here: whoever builds ignoring must
-	// take them out of Rows before WholeTorrents, or "an ignored row stays, so the group it
-	// belongs to waits" (spec 6.3) does not hold.
+	// Ignored holds the keys the user had ignored when the scan started. Here it only stops
+	// the per-season merge into one series row (spec 6.3). Ignored rows are still returned:
+	// the lists apply the ignores when they are read (View, spec 6.5).
 	Ignored map[string]bool
 }
 
@@ -105,7 +104,10 @@ func Series(in SeriesInput) ListResult {
 		var rows []Row
 		switch {
 		case all && !(perSeason && anySeasonIgnored(in.Ignored, s, regular)):
-			rows = append(rows, b.seriesRow(s, regular, seasons))
+			row := b.seriesRow(s, regular, seasons)
+			// Only per-season mode merges: there a season ignore made during the scan holds the row back (View).
+			row.Candidate.Merged = perSeason
+			rows = append(rows, row)
 		case perSeason:
 			for _, a := range qualifying {
 				rows = append(rows, b.seasonRow(s, a))

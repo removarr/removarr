@@ -155,7 +155,20 @@ func TestSeriesPerSeason(t *testing.T) {
 func TestSeriesPerSeasonMergesWhenEverythingIsWatched(t *testing.T) {
 	res := listSeries(seriesInput(twoSeasons(true), allSeen(), perSeason))
 	if got := keysOf(res.Candidates); !reflect.DeepEqual(got, []string{"tvdb:100"}) {
-		t.Errorf("rows = %v, want one merged series row", got)
+		t.Fatalf("rows = %v, want one merged series row", got)
+	}
+	if !res.Candidates[0].Merged {
+		t.Error("a series row the per-season merge produced must be marked merged: a season ignore holds it back (spec 6.5)")
+	}
+}
+
+func TestSeriesRowOfWholeSeriesModeIsNotMarkedMerged(t *testing.T) {
+	res := listSeries(seriesInput(twoSeasons(true), allSeen()))
+	if got := keysOf(res.Candidates); !reflect.DeepEqual(got, []string{"tvdb:100"}) {
+		t.Fatalf("rows = %v, want the series row", got)
+	}
+	if res.Candidates[0].Merged {
+		t.Error("a whole-series mode row must not be marked merged: a season ignore has no effect there")
 	}
 }
 
