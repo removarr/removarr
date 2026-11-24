@@ -72,7 +72,11 @@ func (f *fakeQbit) handler() http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		f.deleted = append(f.deleted, r.FormValue("hashes")+" "+r.FormValue("deleteFiles"))
+		if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+			http.Error(w, "bad content type", http.StatusUnsupportedMediaType)
+			return
+		}
+		f.deleted = append(f.deleted, r.PostFormValue("hashes")+" "+r.PostFormValue("deleteFiles"))
 	}))
 	mux.HandleFunc("/api/v2/app/version", guarded(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "v5.0.3")
@@ -298,7 +302,7 @@ func TestRemoveDownloadLogsInWhenAsked(t *testing.T) {
 	if err := c.RemoveDownload(ctx, "ab", false); err != nil {
 		t.Fatal(err)
 	}
-	if f.logins != 1 || len(f.deleted) != 1 {
+	if f.logins != 1 || !reflect.DeepEqual(f.deleted, []string{"ab false"}) {
 		t.Errorf("logins = %d, deleted = %q; want one login and one removal", f.logins, f.deleted)
 	}
 }
