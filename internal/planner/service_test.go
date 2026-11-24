@@ -118,6 +118,31 @@ func TestPlanAppliesTheCurrentIgnores(t *testing.T) {
 	}
 }
 
+// In per-season mode a season ignore keeps the seasons of a series apart, so the read has to
+// know the ignores (spec 6.3): otherwise it merges them into one series row.
+func TestPlanReadsWithTheIgnoresForThePerSeasonMerge(t *testing.T) {
+	r := rules()
+	r.SeriesUnit = domain.UnitSeason
+	f := world()
+	s := &f.Series.Value.Series[0]
+	s.Ended = false
+	s.Episodes = append(s.Episodes, domain.Episode{ID: 21, Season: 2, Number: 1, File: mfile(121, 500)})
+	f.Library.Value.Episodes = append(f.Library.Value.Episodes, domain.ServerEpisode{SeriesID: "ss1", Season: 2, Episode: 1, States: played()})
+	ignores := []domain.Ignore{{Kind: domain.IgnoreSeason, Key: "tvdb:100:s1", Title: "Show, season 1"}}
+	scannedWith := f
+	scannedWith.Ignored = map[string]bool{"tvdb:100:s1": true}
+	st := &fakeStore{latest: store.Latest{Rows: scanned(r, scannedWith), Ignores: ignores}}
+	svc := service(providersOf(f), st)
+	svc.Rules = func(context.Context) (domain.Rules, error) { return r, nil }
+	got, err := svc.Plan(context.Background(), []domain.RowRef{sel(domain.ListSeries, "tvdb:100:s2")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 1 || len(got.Skipped) != 0 || !reflect.DeepEqual(rowKeys(got.Items[0]), []string{"series/tvdb:100:s2"}) {
+		t.Errorf("plan = %+v, want an item for season 2", got)
+	}
+}
+
 func TestPlanFailsWhenTheLatestScanCannotBeRead(t *testing.T) {
 	st := &fakeStore{readErr: errors.New("disk full")}
 	if _, err := service(providersOf(world()), st).Plan(context.Background(), []domain.RowRef{movieOne}); err == nil {
