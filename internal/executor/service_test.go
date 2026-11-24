@@ -21,6 +21,8 @@ type fakeStore struct {
 	plan     domain.Plan
 	takeErr  error
 	taken    int
+	takenID  string    // the ID TakePlan was asked for
+	takenAt  time.Time // the time TakePlan was given
 	recorded []domain.Action
 	drops    [][]domain.RowRef
 	failAt   int // RecordAction fails on this call, counted from 1; 0 never
@@ -28,6 +30,7 @@ type fakeStore struct {
 
 func (f *fakeStore) TakePlan(_ context.Context, id string, now time.Time) (domain.Plan, error) {
 	f.taken++
+	f.takenID, f.takenAt = id, now
 	if f.takeErr != nil {
 		return domain.Plan{}, f.takeErr
 	}
@@ -66,6 +69,9 @@ func TestExecuteRecordsEachItemAndGoesOnAfterAFailure(t *testing.T) {
 	}
 	if len(res.Actions) != 2 || res.Actions[0].Outcome != domain.OutcomeFailed || res.Actions[1].Outcome != domain.OutcomeDone {
 		t.Fatalf("actions = %+v", res.Actions)
+	}
+	if st.takenID != "p1" || !st.takenAt.Equal(at) {
+		t.Errorf("TakePlan(%q, %v), want p1 at %v", st.takenID, st.takenAt, at)
 	}
 	if res.Actions[1].ID != 2 || res.Actions[1].PlanID != "p1" || !res.Actions[1].At.Equal(at) {
 		t.Errorf("second record = %+v, want ID 2, plan p1 and the time", res.Actions[1])
