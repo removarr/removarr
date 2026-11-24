@@ -69,9 +69,10 @@ func Movies(in MoviesInput) ListResult {
 				WatchedBy: namesOf(names, v.By),
 				WatchedAt: v.At,
 			},
-			Manager: ManagerMovies,
-			ItemIDs: []int{m.ID},
-			FileIDs: []int{m.File.ID},
+			ManagerID: m.ID,
+			Manager:   ManagerMovies,
+			ItemIDs:   []int{m.ID},
+			FileIDs:   []int{m.File.ID},
 		})
 	}
 	sortRows(res.Rows)

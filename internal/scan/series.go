@@ -246,9 +246,10 @@ func (b rowBuilder) row(s domain.Series, watchedOver, deleted []*seasonAgg, item
 			WatchedBy: namesOf(b.names, by),
 			WatchedAt: at,
 		},
-		Manager: ManagerSeries,
-		ItemIDs: itemIDs,
-		FileIDs: fileIDs,
+		Manager:   ManagerSeries,
+		ManagerID: s.ID,
+		ItemIDs:   itemIDs,
+		FileIDs:   fileIDs,
 	}
 }
 

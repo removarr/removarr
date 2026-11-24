@@ -179,3 +179,10 @@ func TestMoviesRowSaysWhatDeleteTouches(t *testing.T) {
 		t.Errorf("row = %+v, want tmdb:603 in the movie manager, item 1, file 10", row)
 	}
 }
+
+func TestMoviesRowNamesTheMovieInItsManager(t *testing.T) {
+	res := Movies(movieInput(func(in *MoviesInput) { in.Snapshot.Movies[0].ID = 42 }))
+	if len(res.Rows) != 1 || res.Rows[0].ManagerID != 42 {
+		t.Fatalf("rows = %+v, want one row with ManagerID 42", res.Rows)
+	}
+}

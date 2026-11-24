@@ -1,6 +1,10 @@
 package scan
 
-import "github.com/removarr/removarr/internal/domain"
+import (
+	"sort"
+
+	"github.com/removarr/removarr/internal/domain"
+)
 
 // The media managers a ManagerFiles can come from. Library file IDs are only unique within
 // one manager.
@@ -95,6 +99,31 @@ func (x *LinkIndex) Backing(id string) int { return x.backing[id] }
 // BackedBytes returns the total size of the current library files the download backs, over
 // every media manager.
 func (x *LinkIndex) BackedBytes(id string) int64 { return x.bytes[id] }
+
+// Associated returns the downloads associated with a row's items and files (spec 6.6): the
+// downloads its files were imported from and those grabbed for its items. The result is
+// sorted and holds each download once.
+func (x *LinkIndex) Associated(manager string, itemIDs, fileIDs []int) []string {
+	seen := map[string]bool{}
+	for _, file := range fileIDs {
+		if id := x.source[ref{manager, file}]; id != "" {
+			seen[id] = true
+		}
+	}
+	for _, item := range itemIDs {
+		for _, id := range x.grabbed[ref{manager, item}] {
+			if id != "" {
+				seen[id] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
 
 // SeedBelowMin reports whether a download is below the seeding minimum (spec 6.6).
 // With both minimums set, it is below only when it is below both.

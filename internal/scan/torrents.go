@@ -86,6 +86,9 @@ func torrentInfo(r domain.Rules, d domain.Download) domain.TorrentInfo {
 	return info
 }
 
+// TorrentDetails returns what a row shows of a download, with the seeding flag of the rules.
+func TorrentDetails(r domain.Rules, d domain.Download) domain.TorrentInfo { return torrentInfo(r, d) }
+
 // downloadsByID indexes downloads by ID.
 func downloadsByID(ds []domain.Download) map[string]domain.Download {
 	out := make(map[string]domain.Download, len(ds))

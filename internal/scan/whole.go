@@ -10,6 +10,7 @@ import (
 type Row struct {
 	Candidate domain.Candidate // everything except Torrents, BelowSeedMin and TiedWith
 	Manager   string           // ManagerMovies or ManagerSeries: whose IDs the next two fields hold
+	ManagerID int              // the movie or the series in that manager: what remove-movie and remove-series need (spec 6.7)
 	ItemIDs   []int            // the movies or episodes Delete affects
 	FileIDs   []int            // the library files Delete removes
 }

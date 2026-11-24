@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -101,5 +102,21 @@ func TestSeedBelowMin(t *testing.T) {
 				t.Errorf("SeedBelowMin = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAssociatedNamesSourcesAndGrabsOnce(t *testing.T) {
+	l := links()
+	l.FileSource[10] = "src"
+	l.Grabbed["src"] = []int{1}
+	l.Grabbed["grab"] = []int{1, 2}
+	l.Grabbed[""] = []int{1}
+	l.Grabbed["other"] = []int{3}
+	x := NewLinkIndex(ManagerFiles{Manager: ManagerMovies, Links: l, Files: []LibraryFile{{ID: 10, Size: 1, Items: []int{1}}}})
+	if got := x.Associated(ManagerMovies, []int{1}, []int{10}); !reflect.DeepEqual(got, []string{"grab", "src"}) {
+		t.Errorf("Associated = %v, want [grab src]", got)
+	}
+	if got := x.Associated(ManagerSeries, []int{1}, []int{10}); len(got) != 0 {
+		t.Errorf("Associated in the other manager = %v, want none", got)
 	}
 }
