@@ -17,6 +17,7 @@ import (
 	"github.com/removarr/removarr/internal/api"
 	"github.com/removarr/removarr/internal/app"
 	"github.com/removarr/removarr/internal/config"
+	"github.com/removarr/removarr/internal/executor"
 	"github.com/removarr/removarr/internal/gate"
 	"github.com/removarr/removarr/internal/planner"
 	"github.com/removarr/removarr/internal/scanner"
@@ -68,7 +69,8 @@ func run(log *slog.Logger) error {
 		Store: st,
 		Now:   time.Now,
 	}
-	server := &api.Server{Config: cfg, Store: st, Scanner: scans, Apps: apps, Planner: plans, Log: log}
+	exec := &executor.Service{Build: apps.Writers, Store: st, Gate: g, DryRun: env.DryRun, Now: time.Now}
+	server := &api.Server{Config: cfg, Store: st, Scanner: scans, Apps: apps, Planner: plans, Executor: exec, Log: log}
 
 	httpServer := &http.Server{
 		Handler:           server.Handler(),
