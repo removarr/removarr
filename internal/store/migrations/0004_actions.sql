@@ -7,3 +7,8 @@ CREATE TABLE actions (
   size        INTEGER NOT NULL,
   data        TEXT NOT NULL -- the whole record as JSON
 );
+
+-- A plan built before this version lists its steps in the old order, which could delete a
+-- file before the episode it holds is unmonitored. Plans expire after ten minutes anyway:
+-- dropping them only asks the user to build the plan again.
+DELETE FROM plans;

@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -43,6 +44,34 @@ func TestTakingAPlanReturnsItAndDropsEveryPlan(t *testing.T) {
 	}
 	if _, err := s.TakePlan(ctx, "abc", built); !errors.Is(err, ErrPlanNotFound) {
 		t.Errorf("taking it again: err = %v, want ErrPlanNotFound", err)
+	}
+}
+
+// A plan built before migration 4 holds its steps in the old order: it must not be executed.
+func TestMigrationFourDropsThePlansBuiltBeforeIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "removarr.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SavePlan(ctx, testPlan("old", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	// Take the database back to before migration 4, keeping the plan.
+	for _, q := range []string{`DROP TABLE actions`, `DELETE FROM schema_migrations WHERE version = 4`} {
+		if _, err := s.db.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Close()
+
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if n := count(t, s, `SELECT COUNT(*) FROM plans`); n != 0 {
+		t.Errorf("%d plans after migration 4, want none", n)
 	}
 }
 
