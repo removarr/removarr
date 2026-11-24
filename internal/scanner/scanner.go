@@ -192,12 +192,12 @@ type Fetched struct {
 }
 
 // Read reads the apps one after another, as a scan does. phase, when not nil, is told what
-// is being read. The media server's library is read only when
-// counting users are selected, because without them no watched list can be produced. Once
-// the download client and at least one media manager have answered, it reads the file
-// lists linking by content needs (spec 6.6): those of the downloads history does not link
-// to a library file, and those of the downloads at least 50 MB larger than the library
-// files history names them the source of.
+// is being read. The media server's library is read only when counting users are selected,
+// because without them no watched list can be produced. Once the download client and at
+// least one media manager have answered, it reads the file lists linking by content needs
+// (spec 6.6): those of the downloads history does not link to a library file, and those of
+// the downloads at least 50 MB larger than the library files history names them the source
+// of.
 func Read(ctx context.Context, p Providers, rules domain.Rules, phase func(string)) Fetched {
 	setPhase := func(string) {}
 	if phase != nil {

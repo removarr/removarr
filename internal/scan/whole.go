@@ -25,7 +25,9 @@ const (
 
 // WholeTorrents applies the whole-torrent rule to the rows of the watched lists. It fills
 // Candidates, Held and Waiting of each list from its Rows: Held keeps the rows of groups that
-// wait, marked Waiting, so that ignores can be applied to the stored rows later (spec 6.5).
+// wait, marked Waiting and with what the group waits for in WaitReason (one of the Wait…
+// texts), so that ignores can be applied to the stored rows later (spec 6.5) and a plan can
+// say why a row cannot be deleted (spec 6.10).
 //
 // Rows whose files are backed by the same torrent, or that delete the same library file,
 // form a group, directly or through a chain. A torrent blocks its group when it is queued
