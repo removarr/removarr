@@ -20,6 +20,7 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 | `internal/domain` | Product-neutral types |
 | `internal/scan` | Every rule about what is a candidate, as pure functions. No I/O |
 | `internal/scanner` | Runs one scan: reads the apps, calls `scan`, stores the result |
+| `internal/planner` | Builds the plan for a deletion: reads and evaluates through `scanner`, then `Make` decides the items, steps and skips. Executes nothing |
 | `internal/providers/*`, `internal/httpjson` | One client per app. They translate an API into `domain` types and decide nothing |
 | `internal/store` | SQLite: settings, scans, candidates. Migrations in `internal/store/migrations` |
 | `internal/config` | Environment variables and saved settings; saved settings take priority |
@@ -36,7 +37,7 @@ The checks. All of them must pass:
 gofmt -l .        # must print nothing
 go vet ./...
 go test ./...
-go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/
+go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/ ./internal/planner/
 go build ./...
 ```
 
