@@ -115,6 +115,32 @@ func TestSameHostRedirectsRefusesAnotherHost(t *testing.T) {
 	}
 }
 
+func TestSameHostRedirectsRefusesARedirectThatTurnsAWriteIntoAGet(t *testing.T) {
+	for _, status := range []int{http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther} {
+		var methods []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			methods = append(methods, r.Method)
+			if r.URL.Path == "/new" {
+				w.Write([]byte(`{}`))
+				return
+			}
+			http.Redirect(w, r, "/new", status)
+		}))
+		c := &http.Client{CheckRedirect: SameHostRedirects}
+		err := Do(ctx, c, http.MethodDelete, srv.URL+"/old", nil, nil, nil)
+		srv.Close()
+		if err == nil {
+			t.Errorf("status %d: the DELETE reported success after a redirect", status)
+		}
+		if err != nil && strings.Contains(err.Error(), srv.URL) {
+			t.Errorf("status %d: the error repeats the URL: %v", status, err)
+		}
+		if len(methods) != 1 {
+			t.Errorf("status %d: server saw %v, want only the DELETE", status, methods)
+		}
+	}
+}
+
 func TestSameHostRedirectsFollowsTheSameHost(t *testing.T) {
 	a := serve(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/old" {

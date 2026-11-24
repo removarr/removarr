@@ -104,6 +104,11 @@ func SameHostRedirects(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
 	}
+	// Go turns any method but GET or HEAD into a GET when it follows a 301, 302 or 303. For a
+	// write that would run a read and report success while nothing changed.
+	if req.Method != via[0].Method {
+		return fmt.Errorf("refusing to follow a redirect that changes the method from %s to %s", via[0].Method, req.Method)
+	}
 	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
 		return fmt.Errorf("refusing to follow a redirect from %s to %s", via[0].URL.Host, req.URL.Host)
 	}
