@@ -10,6 +10,33 @@ What changed in removarr, written for the person who runs it.
 
 ## Unreleased
 
+### Stage 2d: execute plans and record history (issue #5)
+
+removarr can now carry out a plan. This is the first stage that changes your apps. With `REMOVARR_DRY_RUN=true` it does everything except the change itself.
+
+#### Scope
+
+- **Execution:** `POST /api/plans/{id}/execute` runs a plan you built and confirmed, and returns one record per item. A plan is taken once: executing it discards the others, and a second request for it, or one for an expired plan, is refused (404, 410) so it is built again.
+- **Order:** within an item, the media manager steps run first and the torrents after. Unmonitoring comes before deleting, so Sonarr and Radarr do not search for what was just deleted.
+- **Failures:** a step that fails is recorded with its error and the rest of the item stops; the other items still run. If the time runs out, the items not reached are recorded as not run. A step whose app is not configured fails as not configured.
+- **Shared data at execution:** whether a torrent's data stays is decided again at the moment of removal, per torrent, longest path first, from the torrents that are still there. The plan's `keepData` is only the forecast.
+- **Dry run:** with `REMOVARR_DRY_RUN=true`, only GET requests reach the apps and every step is recorded as a dry run.
+- **History:** `GET /api/actions?before=&limit=` lists the records newest first, with `next` for the following page. Each record keeps its rows, steps and outcome.
+- **Stored lists:** executing a plan updates the stored candidate lists, so removed rows disappear without a new scan.
+- **One job at a time:** a scan, building a plan and executing one refuse each other with 409 and name the job that is running.
+- **Redirects and hashes:** a redirect that would change a request's method is refused. qBittorrent removal accepts only lower-case hexadecimal hashes, so a malformed ID can never remove other torrents.
+- **Sonarr seasons:** unmonitoring a season in Sonarr 4.0.12 also unmonitors its episodes, as read from its source; to be confirmed on the reference stack.
+
+#### Deployment
+
+- Database migration `0004_actions` runs on start and adds the `actions` table.
+- Start with `REMOVARR_DRY_RUN=true`, execute a plan, and compare the history with the plan before you delete for real.
+
+#### Breaking changes
+
+- Building a plan while a scan runs is now refused with 409. It used to wait for the scan.
+- Plan steps now list unmonitoring before deleting, and carry a `rowKey`. A client that read steps by position must read them by content.
+
 ### Stage 2c: delete plans from live data (issue #4)
 
 removarr can now say exactly what deleting the selected rows would do. Still read-only towards the apps: a plan is built and stored, never executed.

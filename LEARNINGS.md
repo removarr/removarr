@@ -19,6 +19,7 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 
 - 2026-11-22. **Looking an episode up by season and number can be ambiguous.** If Sonarr ever lists the same number twice with different files, the answer depends on the order they arrive in. Where it matters which file an episode is in, such a number counts as unknown (`fileIDsOf` in `internal/scan/series.go`).
 - 2026-11-22. **One library file can hold episodes of two seasons, or a special and a regular episode.** A season row used to delete such a file together with an episode that was not watched. Files are kept whole like torrents (spec 6.3).
+- 2026-11-24. **Saving a series with a season unmonitored unmonitors that season's episodes in Sonarr 4.0.12** (read from its source; to be confirmed on the reference stack). A series is changed only as a whole, so it is read and sent back with every field, never rebuilt from the fields removarr knows (`internal/providers/sonarr`).
 
 ## Jellyfin
 
@@ -33,6 +34,7 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-19. **An instance that trusts the local network answers without a login.** The login path has therefore never run against the reference stack.
 - 2026-11-19. **`size` of a torrent counts only the files selected for download**, while the file list names every file, each with `progress` and `priority`. removarr compares listed files by size and does not look at `progress` yet (spec 6.6, limits).
 - 2026-11-19. **A file list costs one request per torrent.** Ask only where the answer can change a result: 90 of 381 torrents on the reference stack (spec 6.6).
+- 2026-11-24. **`hashes=all` removes every torrent, and `|` separates hashes.** Only a lower-case hexadecimal ID is ever sent, and a request names exactly one torrent (`internal/providers/qbittorrent`).
 
 ## Linking torrents to library files
 
@@ -57,6 +59,7 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-24. **One read is not proof.** History is read before the queue, so a download imported between the two reads looks unlinked for that read. A plan removes a torrent only when the latest scan and the planner's read agree on it, in both directions; a row that waited in the latest scan is skipped (`changedSinceScan`).
 - 2026-11-24. **Shared data is decided against everything that stays.** One staying torrent with an unknown content path keeps the data of every torrent a plan removes, and paths are compared without regard to case, so two Linux directories that differ only in case keep their data. Both err toward keeping. A plan's `keepData` assumes every item succeeds; the executor must decide again from the torrents it actually removed.
 - 2026-11-24. **A test fixture whose file IDs equal its episode IDs hides swapped IDs.** Unmonitoring files instead of episodes passed every test until the IDs differed. Sonarr's episode IDs are global, so such a swap would unmonitor episodes of other series.
+- 2026-11-24. **Shared data is decided per torrent at the moment of removal, longest path first.** A torrent inside another one's folder must go before the outer one, so each decision sees which torrents are still there. This is the second decision the plan's `keepData` forecast promised (`internal/executor`).
 
 ## Security
 
