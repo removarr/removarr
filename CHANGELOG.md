@@ -18,11 +18,11 @@ removarr can now carry out a plan. This is the first stage that changes your app
 
 - **Execution:** `POST /api/plans/{id}/execute` runs a plan you built and confirmed, and returns one record per item. A plan is taken once: executing it discards the others, and a second request for it, or one for an expired plan, is refused (404, 410) so it is built again.
 - **Order:** within an item, the media manager steps run first and the torrents after. Unmonitoring comes before deleting, so Sonarr and Radarr do not search for what was just deleted.
-- **Failures:** a step that fails is recorded with its error and the rest of the item stops; the other items still run. If the time runs out, the items not reached are recorded as not run. A step whose app is not configured fails as not configured.
+- **Failures:** every item runs and is recorded. When a step fails, it is recorded with its error and the steps after it in the same item, torrents included, are recorded as skipped and not sent; the next item runs regardless. A step whose app is not configured fails as not configured. An execution has a limit of 30 minutes: once it runs out, the steps still to run fail with that error. Execution stops early only when an item cannot be recorded, so nothing more is deleted than the history holds.
 - **Shared data at execution:** whether a torrent's data stays is decided again at the moment of removal, per torrent, longest path first, from the torrents that are still there. The plan's `keepData` is only the forecast.
 - **Dry run:** with `REMOVARR_DRY_RUN=true`, only GET requests reach the apps and every step is recorded as a dry run.
 - **History:** `GET /api/actions?before=&limit=` lists the records newest first, with `next` for the following page. Each record keeps its rows, steps and outcome.
-- **Stored lists:** executing a plan updates the stored candidate lists, so removed rows disappear without a new scan.
+- **Stored lists:** executing a plan removes the rows it deleted from the stored candidate lists, so they disappear without a new scan. A row whose steps did not all succeed stays. In a dry run the lists stay as they are.
 - **One job at a time:** a scan, building a plan and executing one refuse each other with 409 and name the job that is running.
 - **Redirects and hashes:** a redirect that would change a request's method is refused. qBittorrent removal accepts only lower-case hexadecimal hashes, so a malformed ID can never remove other torrents.
 - **Sonarr seasons:** unmonitoring a season in Sonarr 4.0.12 also unmonitors its episodes, as read from its source; to be confirmed on the reference stack.

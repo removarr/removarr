@@ -54,7 +54,7 @@ REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
 ## Rules for the code
 
 - **Dependencies:** Go 1.27 and the standard library. The only third-party module is `modernc.org/sqlite`. Adding one is the owner's decision.
-- **Only the executor changes an app.** `internal/executor` is the only code given the write interfaces (`providers.MovieWriter`, `SeriesWriter`, `DownloadRemover`). The scanner and the planner send GET requests only, plus the qBittorrent login. With `REMOVARR_DRY_RUN=true` nothing but GET reaches an app.
+- **Only the executor changes an app.** `internal/executor` is the only code given the write interfaces (`providers.MovieWriter`, `SeriesWriter`, `DownloadRemover`). The scanner and the planner send GET requests only, plus the qBittorrent login. With `REMOVARR_DRY_RUN=true` nothing but GET, plus the qBittorrent login, reaches an app.
 - **No guessing from a partial answer** (spec 6.8, rule 5). If an app's answer is incomplete or inconsistent, return an error so the list shows it. Do not fill in a default.
 - **Secrets are write-only.** API keys and the qBittorrent password are never returned, logged or put into an error. An error about a URL never repeats the URL.
 - **Outbound requests** use an HTTP client with `httpjson.SameHostRedirects`.
