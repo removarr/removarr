@@ -31,6 +31,13 @@ func (m *maker) addGroup(id rowID, c domain.Candidate) {
 		}
 		members = append(members, o)
 	}
+	for _, o := range members {
+		// Holds.Reason has checked this already; an ignored row is never deleted with others.
+		if m.in.Ignores.Hides(o.List, o.Key) {
+			m.skip(id, fmt.Sprintf("It is tied to %q, which is ignored.", o.Title))
+			return
+		}
+	}
 	sort.Slice(members, func(i, j int) bool {
 		if a, b := listRank(members[i].List), listRank(members[j].List); a != b {
 			return a < b

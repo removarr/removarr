@@ -260,3 +260,43 @@ func TestMakeUsesTheNewReadWhenATorrentIsGoneSinceTheScan(t *testing.T) {
 		t.Errorf("torrents = %v, want none", torrentIDs(item))
 	}
 }
+
+// chain turns world() into a chain of three rows: movie 1 shares m1 with the show, and the
+// show shares the new torrent m2 with the ended series 3 "Other" (tvdb:300), which movie 1
+// shares nothing with.
+func chain() scannerFetched {
+	f := world()
+	f.Library.Value.Series = append(f.Library.Value.Series, domain.ServerSeries{ID: "ss3", IDs: domain.ExternalIDs{TVDB: "300"}})
+	f.Library.Value.Episodes = append(f.Library.Value.Episodes, domain.ServerEpisode{SeriesID: "ss3", Season: 1, Episode: 1, States: played()})
+	f.Series.Value.Series = append(f.Series.Value.Series, domain.Series{
+		ID: 3, Title: "Other", Ended: true, IDs: domain.ExternalIDs{TVDB: "300"},
+		Episodes: []domain.Episode{{ID: 31, Season: 1, Number: 1, File: mfile(311, 500)}},
+	})
+	f.Series.Value.Links = domain.Links{
+		Grabbed:    map[string][]int{"m1": {11}, "m2": {12, 31}},
+		FileSource: map[int]string{111: "m1", 112: "m2", 311: "m2"},
+		Queue:      map[string]bool{},
+	}
+	f.Downloads.Value = append(f.Downloads.Value, domain.Download{ID: "m2", Name: "Shared.Torrent", Size: 1000, ContentPath: "/dl/shared"})
+	return f
+}
+
+func TestMakeSkipsARowWhoseChainReachesAnIgnoredRow(t *testing.T) {
+	f := chain()
+	var tied []string
+	for _, c := range scanned(rules(), f) {
+		if c.Key == "tmdb:1" {
+			for _, ref := range c.TiedWith {
+				tied = append(tied, ref.Key)
+			}
+		}
+	}
+	if !reflect.DeepEqual(tied, []string{"tvdb:100", "tvdb:300"}) {
+		t.Fatalf("movie 1 is tied to %v, want the show and Other", tied)
+	}
+	ign := []domain.Ignore{{Kind: domain.IgnoreSeries, Key: "tvdb:300", Title: "Other"}}
+	items, skipped := same(t, rules(), f, ign, movieOne)
+	if len(items) != 0 || skips(skipped)["tmdb:1"] != `It is tied to "Other", which is ignored.` {
+		t.Errorf("items = %+v, skipped = %+v, want tmdb:1 skipped, naming Other", items, skipped)
+	}
+}
