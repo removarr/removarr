@@ -78,6 +78,7 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-22. **To check a change of rules, scan with the old and the new binary against the same apps** and compare row by row. Every difference must be one the raw data explains.
 - 2026-11-19. **Print counts and sizes only** when working with real data. Titles, names, URLs and keys stay out of logs, commits and reports.
 - 2026-11-19. **On macOS a binary started by an automated agent session can get "no route to host" for addresses on the local network**, while `curl` works. This is the system's local-network privacy control. Run the binary from a normal terminal instead of working around it.
+- 2026-11-24. **A replay gets removarr to the apps from an agent session, read-only.** A local stub in the owner's `~/.claude/removarr-check` answers removarr's requests. It fetches each GET with `/usr/bin/curl`, which may reach the local network, and refuses every other method and every path removarr does not read. Claude Code's auto mode blocks this as a containment escape unless the owner allows the two launch scripts by their exact commands. Together with dry run, nothing that changes an app can reach it; three changing requests sent on purpose were all refused and none was fetched. The first check through it gave the same lists as stage 2a.
 - 2026-11-19. **A full scan of the reference stack takes about 19 seconds** on a Raspberry Pi 5: 277 movies, 134 series, 381 torrents, 90 file lists.
 
 ## Tests and reviews

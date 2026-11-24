@@ -71,7 +71,7 @@ REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
 
 - Never commit or print URLs, keys, user names, file names or titles from anyone's library. Record measurements as counts and sizes only.
 - `.env` in the repository root holds the owner's connection details. It is git-ignored. Read it by path when a check needs it; never print or copy it.
-- Checking against the real apps is done with the owner: build the binary, hand over the command, compare the result. See "Checking against real apps" in `LEARNINGS.md`.
+- Checking against the real apps is done by the agent, never handed to the owner: removarr runs with dry run on, against the owner's local replay, which forwards only reads. Nothing is ever deleted while testing; a check with dry run off is the owner's. The implement-issue skill, step 6, has the details, and so does "Checking against real apps" in `LEARNINGS.md`.
 
 ## Git and pull requests
 
