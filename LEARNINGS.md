@@ -63,6 +63,7 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 
 ## Security
 
+- 2026-11-24. **A `*url.Error` repeats the full request URL, query included, and a dial error the address it dialled** (`Delete "http://host:7878/api/v3/movie/12?deleteFiles=true": dial tcp 10.0.0.5:7878: ...`). Such an error went into the history and `GET /api/actions`. `httpjson.RequestError` unwraps it, leaves out the dialled address and replaces the host before an error is stored or shown; the redirect refusals name no host. `errors.Is` still finds `context.DeadlineExceeded`.
 - 2026-11-22. **Comparing Origin with Host does not stop DNS rebinding.** A page that points its own domain name at removarr's address makes the browser send that name as both headers. Only checking the Host header against IP addresses, `localhost` and listed names does (`guard`, `REMOVARR_ALLOWED_HOSTS`, spec section 10).
 - 2026-11-19. **Go's HTTP client forwards a custom header such as `X-Api-Key` when it follows a redirect.** Every client uses `httpjson.SameHostRedirects`, which refuses another host or port, and a step from https to http.
 - 2026-11-19. **A base URL can carry a credential** (`http://user:pass@host`), and an error that repeats a bad URL can leak one. Such URLs are rejected, and URL errors are fixed texts.

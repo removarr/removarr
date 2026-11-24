@@ -27,6 +27,8 @@ Requires Go 1.27.
 
 Connection settings saved through the API take priority over these variables.
 
+When removarr is stopped during an execution, it starts no further item and waits up to two minutes for the one it is running to finish and be recorded. Give it more than that before it is killed: Docker waits 10 seconds by default (`docker stop -t 130`), systemd 90 seconds (`TimeoutStopSec=130`).
+
 ## Trying the API
 
 Requests that change something need two headers:

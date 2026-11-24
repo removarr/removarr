@@ -17,11 +17,12 @@ removarr can now carry out a plan. This is the first stage that changes your app
 #### Scope
 
 - **Execution:** `POST /api/plans/{id}/execute` runs a plan you built and confirmed, and returns one record per item. A plan is taken once: executing it discards the others, and a second request for it, or one for an expired plan, is refused (404, 410) so it is built again.
-- **Order:** within an item, the media manager steps run first and the torrents after. Unmonitoring comes before deleting, so Sonarr and Radarr do not search for what was just deleted.
-- **Failures:** every item runs and is recorded. When a step fails, it is recorded with its error and the steps after it in the same item, torrents included, are recorded as skipped and not sent; the next item runs regardless. A step whose app is not configured fails as not configured. An execution has a limit of 30 minutes: once it runs out, the steps still to run fail with that error. Execution stops early only when an item cannot be recorded, so nothing more is deleted than the history holds.
+- **Order:** within an item, the media manager steps run first and the torrents after. Every unmonitor step of an item comes before its deletions, so Sonarr does not search for what was just deleted, also when one row deletes a file that holds another row's episode.
+- **Failures:** every item runs and is recorded. When a step fails, it is recorded with its error and the steps after it in the same item, torrents included, are recorded as skipped and not sent; the next item runs regardless. A step whose app is not configured fails as not configured. An execution has a limit of 30 minutes: once it runs out, the steps still to run fail with that error. Execution stops early only when an item cannot be recorded, so nothing more is deleted than the history holds, or when removarr is stopped.
 - **Shared data at execution:** whether a torrent's data stays is decided again at the moment of removal, per torrent, longest path first, from the torrents that are still there. The plan's `keepData` is only the forecast.
 - **Dry run:** with `REMOVARR_DRY_RUN=true`, only GET requests reach the apps and every step is recorded as a dry run.
-- **History:** `GET /api/actions?before=&limit=` lists the records newest first, with `next` for the following page. Each record keeps its rows, steps and outcome.
+- **History:** `GET /api/actions?before=&limit=` lists the records newest first, with `next` for the following page. Each record keeps its rows, steps and outcome. A torrent step records the keep-data choice that was sent, also when the request failed. An error in the history never repeats the app's URL or address: a request that got no answer names only its method.
+- **Stopping removarr:** when removarr is stopped during an execution, it starts no further item and waits up to two minutes for the item it is running to finish and be recorded before it closes the database. Items that did not start stay in the lists. If an item ran but could not be recorded, removarr logs it at error level with its plan, outcome, row keys and step IDs.
 - **Stored lists:** executing a plan removes the rows it deleted from the stored candidate lists, so they disappear without a new scan. A row whose steps did not all succeed stays. In a dry run the lists stay as they are.
 - **One job at a time:** a scan, building a plan and executing one refuse each other with 409 and name the job that is running.
 - **Redirects and hashes:** a redirect that would change a request's method is refused. qBittorrent removal accepts only lower-case hexadecimal hashes, so a malformed ID can never remove other torrents.
@@ -29,7 +30,8 @@ removarr can now carry out a plan. This is the first stage that changes your app
 
 #### Deployment
 
-- Database migration `0004_actions` runs on start and adds the `actions` table.
+- Database migration `0004_actions` runs on start, adds the `actions` table and discards plans built by an earlier version: build them again.
+- Give removarr more than two minutes to stop before it is killed, so an execution that is running can record its last item: Docker waits 10 seconds by default (`docker stop -t 130`, or `stop_grace_period: 130s` in Compose), systemd 90 seconds (`TimeoutStopSec=130`).
 - Start with `REMOVARR_DRY_RUN=true`, execute a plan, and compare the history with the plan before you delete for real.
 
 #### Breaking changes
