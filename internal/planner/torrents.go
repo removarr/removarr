@@ -59,6 +59,7 @@ func (m *maker) kept(members []domain.Candidate) []domain.KeptTorrent {
 		row := m.rows[rowID{o.List, o.Key}]
 		for _, id := range m.in.Eval.Index.Associated(row.Manager, row.ItemIDs, row.FileIDs) {
 			d, ok := m.downloads[id]
+			// finish also drops every torrent another item of the plan removes.
 			if !ok || named[id] || seen[id] {
 				continue
 			}
@@ -100,9 +101,11 @@ func (m *maker) finish() {
 	}
 }
 
-// sharesData reports whether a removed download's data must stay.
+// sharesData reports whether a removed download's data must stay. Unsure means keep: a
+// removed download whose path is unknown keeps its data, and so does every removed download
+// while a download that stays has an unknown path, since that one may use any data.
 func (m *maker) sharesData(id string, removed map[string]bool) bool {
-	mine := cleanPath(m.downloads[id].ContentPath)
+	mine := normalPath(m.downloads[id].ContentPath)
 	if mine == "" {
 		return true
 	}
@@ -110,20 +113,30 @@ func (m *maker) sharesData(id string, removed map[string]bool) bool {
 		if removed[d.ID] {
 			continue
 		}
-		if other := cleanPath(d.ContentPath); other != "" && overlaps(mine, other) {
+		if other := normalPath(d.ContentPath); other == "" || overlaps(mine, other) {
 			return true
 		}
 	}
 	return false
 }
 
-// cleanPath drops trailing separators. A path of separators only becomes "", unknown.
-func cleanPath(p string) string { return strings.TrimRight(p, `/\`) }
+// normalPath makes content paths comparable, in the direction that only ever keeps more data:
+// two paths that might name the same place compare equal. It reads `\` as `/`, collapses
+// repeated separators, drops a trailing one and lower-cases the path, so that paths that
+// differ only by the client's platform, a doubled separator or case are taken as the same. A
+// path of separators only becomes "", unknown.
+func normalPath(p string) string {
+	p = strings.ReplaceAll(p, `\`, "/")
+	for strings.Contains(p, "//") {
+		p = strings.ReplaceAll(p, "//", "/")
+	}
+	return strings.ToLower(strings.TrimRight(p, "/"))
+}
 
-// overlaps reports whether two content paths are the same or one lies inside the other.
+// overlaps reports whether two normalised content paths are the same or one lies inside the
+// other.
 func overlaps(a, b string) bool { return a == b || within(a, b) || within(b, a) }
 
-// within reports whether p lies inside the directory dir, with either kind of separator.
-func within(p, dir string) bool {
-	return strings.HasPrefix(p, dir+"/") || strings.HasPrefix(p, dir+`\`)
-}
+// within reports whether the normalised path p lies inside the directory dir. The separator
+// is part of the prefix, so /dl/one-two is not inside /dl/one.
+func within(p, dir string) bool { return strings.HasPrefix(p, dir+"/") }

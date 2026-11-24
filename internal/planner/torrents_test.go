@@ -95,6 +95,13 @@ func TestMakeKeepsTheDataATorrentThatStaysUses(t *testing.T) {
 		{"a path that only starts the same", "/dl/one-two", "/dl/one", false},
 		{"an unrelated path", "/dl/other", "/dl/one", false},
 		{"an unknown path of its own", "/dl/other", "", true},
+		{"its own path with a trailing slash, around it", "/dl/one/sub", "/dl/one/", true},
+		{"its own path of only a separator", "/dl/other", "/", true},
+		{"its own Windows path with a trailing separator, around it", `D:\dl\one\x`, `D:\dl\one\`, true},
+		{"an unknown path that stays", "", "/dl/one", true},
+		{"a path of only a separator that stays", "/", "/dl/one", true},
+		{"a Windows path around it in another case", `D:\DL\one`, `d:\dl\one\x`, true},
+		{"a path around it, its own with a doubled separator", "/dl/one", "//dl/one/x", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -106,6 +113,63 @@ func TestMakeKeepsTheDataATorrentThatStaysUses(t *testing.T) {
 				t.Errorf("torrents = %+v, want m1 with KeepData %v", item.Torrents, tt.keep)
 			}
 		})
+	}
+}
+
+// planTorrent finds a torrent the plan removes, by ID.
+func planTorrent(t *testing.T, items []domain.PlanItem, id string) domain.PlanTorrent {
+	t.Helper()
+	for _, it := range items {
+		for _, pt := range it.Torrents {
+			if pt.Torrent.ID == id {
+				return pt
+			}
+		}
+	}
+	t.Fatalf("no item removes %s: %+v", id, items)
+	return domain.PlanTorrent{}
+}
+
+func TestMakeKeepsTheDataOfATorrentWhosePathIsUnknown(t *testing.T) {
+	t.Run("only Windows paths stay", func(t *testing.T) {
+		f := world()
+		f.Downloads.Value[0].ContentPath = ""
+		f.Downloads.Value[1].ContentPath = `E:\elsewhere`
+		f.Downloads.Value[2].ContentPath = `E:\other`
+		items, _ := same(t, rules(), f, nil, movieOne)
+		if !planTorrent(t, items, "m1").KeepData {
+			t.Errorf("m1 deletes its data, want it kept: its path is unknown")
+		}
+	})
+	t.Run("nothing stays", func(t *testing.T) {
+		f := world()
+		f.Downloads.Value[0].ContentPath = ""
+		items, _ := same(t, rules(), f, nil, movieOne, theShow, orphan)
+		if len(items) != 3 {
+			t.Fatalf("items = %+v, want three: every download goes", items)
+		}
+		if !planTorrent(t, items, "m1").KeepData {
+			t.Errorf("m1 deletes its data, want it kept: its path is unknown")
+		}
+	})
+}
+
+func TestMakeMarksOnlyTheTorrentLinkedBySizeInAnItemWithBoth(t *testing.T) {
+	f := world()
+	// Episode 2's file was imported by hand from c: only its size ties them. Episode 1's file
+	// came from p1, which history records.
+	size := scan.MinContentSize + 3
+	f.Series.Value.Series[0].Episodes[1].File.Size = size
+	delete(f.Series.Value.Links.FileSource, 112)
+	f.Downloads.Value = append(f.Downloads.Value, domain.Download{ID: "c", Name: "Show.E02", Size: size, ContentPath: "/dl/e02"})
+	f.Files = map[string][]domain.DownloadFile{"c": {{Name: "e02.mkv", Size: size}}}
+	item := onlyItem(t)(same(t, rules(), f, nil, theShow))
+	by := map[string]bool{}
+	for _, pt := range item.Torrents {
+		by[pt.Torrent.ID] = pt.LinkedBySize
+	}
+	if want := map[string]bool{"c": true, "p1": false}; !reflect.DeepEqual(by, want) {
+		t.Errorf("linked by size = %v, want %v", by, want)
 	}
 }
 
