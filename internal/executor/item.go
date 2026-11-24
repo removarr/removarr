@@ -152,6 +152,9 @@ func (r *run) torrents(ctx context.Context, planned []domain.PlanTorrent, failed
 			res.Result = domain.ResultGone
 		default:
 			keep := t.KeepData || scan.KeepsData(d.ContentPath, otherPaths(live, d.ID))
+			// The flag sent, or that would be: the history says what the client was asked,
+			// also when the call failed after the client may have acted on it.
+			res.KeepData = keep
 			if r.dryRun {
 				res.Result = domain.ResultDryRun
 			} else if err := r.p.Remover.RemoveDownload(ctx, d.ID, !keep); err != nil {
@@ -161,7 +164,6 @@ func (r *run) torrents(ctx context.Context, planned []domain.PlanTorrent, failed
 			}
 			if !failed {
 				// Gone from the client, or would be: later torrents no longer share its data.
-				res.KeepData = keep
 				r.removed[d.ID] = true
 				delete(live, d.ID)
 			}

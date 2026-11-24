@@ -263,8 +263,8 @@ func TestAFailedTorrentRemovalSkipsTheRestOfTheItem(t *testing.T) {
 	if !reflect.DeepEqual(results(act), want) || act.Outcome != domain.OutcomeFailed {
 		t.Errorf("results = %q, outcome %s; want %q, failed", results(act), act.Outcome, want)
 	}
-	if act.Steps[1].KeepData {
-		t.Errorf("a failed removal records the plan's keepData, got %+v", act.Steps[1])
+	if !act.Steps[1].KeepData {
+		t.Errorf("a failed removal must record the flag that was sent (data=false, so keepData true), got %+v", act.Steps[1])
 	}
 	if !contains(a.log, "remove torrent h1 data=false") || contains(a.log, "remove torrent h2 data=true") {
 		t.Errorf("calls = %q: nothing after the failure", a.log)

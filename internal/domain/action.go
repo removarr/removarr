@@ -44,7 +44,7 @@ type ActionRow struct {
 type StepResult struct {
 	Manager  *ManagerStep `json:"manager,omitempty"`
 	Torrent  *TorrentInfo `json:"torrent,omitempty"`
-	KeepData bool         `json:"keepData,omitempty"` // torrent: removed, or would be, without its data
+	KeepData bool         `json:"keepData,omitempty"` // torrent: removal sent, or would be, without its data; skipped or gone: the plan's choice
 	Result   string       `json:"result"`             // one of the Result constants
 	Error    string       `json:"error,omitempty"`
 }
