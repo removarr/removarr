@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/removarr/removarr/internal/domain"
@@ -13,6 +14,34 @@ import (
 
 func body(s string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, s) }
+}
+
+func TestRemoveMovieDeletesItsFilesAndAddsTheExclusionWhenAsked(t *testing.T) {
+	for _, excl := range []bool{true, false} {
+		var got string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = r.Method + " " + r.URL.Path + "?" + r.URL.RawQuery + " key=" + r.Header.Get("X-Api-Key")
+		}))
+		c := New(srv.URL, "k", srv.Client())
+		if err := c.RemoveMovie(context.Background(), 7, excl); err != nil {
+			t.Fatal(err)
+		}
+		srv.Close()
+		want := fmt.Sprintf("DELETE /api/v3/movie/7?addImportExclusion=%v&deleteFiles=true key=k", excl)
+		if got != want {
+			t.Errorf("request = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestRemoveMovieReportsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Movie not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	if err := New(srv.URL, "k", srv.Client()).RemoveMovie(context.Background(), 7, false); err == nil || !strings.Contains(err.Error(), "404") {
+		t.Errorf("err = %v, want the 404", err)
+	}
 }
 
 func TestMovies(t *testing.T) {

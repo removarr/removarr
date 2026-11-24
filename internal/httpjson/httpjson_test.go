@@ -3,6 +3,7 @@ package httpjson
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +19,21 @@ func serve(t *testing.T, h http.HandlerFunc) *httptest.Server {
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func TestDoSendsTheMethodAndAJSONBody(t *testing.T) {
+	var method, ctype, body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		method, ctype, body = r.Method, r.Header.Get("Content-Type"), strings.TrimSpace(string(b))
+	}))
+	defer srv.Close()
+	if err := Do(context.Background(), srv.Client(), http.MethodPut, srv.URL, nil, map[string]any{"ids": []int{1, 2}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodPut || ctype != "application/json" || body != `{"ids":[1,2]}` {
+		t.Errorf("got %s %q %s", method, ctype, body)
+	}
 }
 
 func TestGetDecodesJSONAndSendsHeaders(t *testing.T) {

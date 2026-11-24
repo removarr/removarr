@@ -29,11 +29,17 @@ type Client struct {
 
 // Get requests path and decodes the JSON response into out. It does not change q.
 func (c *Client) Get(ctx context.Context, path string, q url.Values, out any) error {
+	return c.Send(ctx, http.MethodGet, path, q, nil, out)
+}
+
+// Send sends a request with an optional JSON body and decodes the JSON response into out.
+// It does not change q.
+func (c *Client) Send(ctx context.Context, method, path string, q url.Values, body, out any) error {
 	u := c.BaseURL + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
-	return httpjson.Get(ctx, c.HTTP, u, http.Header{"X-Api-Key": {c.APIKey}}, out)
+	return httpjson.Do(ctx, c.HTTP, method, u, http.Header{"X-Api-Key": {c.APIKey}}, body, out)
 }
 
 // Tags returns the tag labels by tag ID.

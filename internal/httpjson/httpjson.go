@@ -2,6 +2,7 @@
 package httpjson
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,7 +29,22 @@ func (e *StatusError) Error() string {
 // Get sends a GET request and decodes the JSON response into out. A nil out skips decoding.
 // Credentials belong in header, never in rawURL, so they cannot end up in error messages.
 func Get(ctx context.Context, c *http.Client, rawURL string, header http.Header, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	return Do(ctx, c, http.MethodGet, rawURL, header, nil, out)
+}
+
+// Do sends a request and decodes the JSON response into out. A nil body sends none; any other
+// body is sent as JSON. A nil out skips decoding. Credentials belong in header, never in
+// rawURL, so they cannot end up in error messages.
+func Do(ctx context.Context, c *http.Client, method, rawURL string, header http.Header, body, out any) error {
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("encode request: %w", err)
+		}
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, reader)
 	if err != nil {
 		return err
 	}
@@ -36,6 +52,9 @@ func Get(ctx context.Context, c *http.Client, rawURL string, header http.Header,
 		req.Header[name] = values
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.Do(req)
 	if err != nil {
@@ -44,8 +63,8 @@ func Get(ctx context.Context, c *http.Client, rawURL string, header http.Header,
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
-		return &StatusError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
+		return &StatusError{Status: resp.StatusCode, Body: strings.TrimSpace(string(snippet))}
 	}
 	if out == nil {
 		return nil

@@ -1,11 +1,13 @@
-// Package sonarr reads series from Sonarr.
+// Package sonarr reads series from Sonarr and changes them as a plan says.
 package sonarr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 
 	"github.com/removarr/removarr/internal/domain"
@@ -16,11 +18,91 @@ import (
 
 var (
 	_ providers.SeriesManager = (*Client)(nil)
+	_ providers.SeriesWriter  = (*Client)(nil)
 	_ providers.Tester        = (*Client)(nil)
 )
 
 // Client talks to one Sonarr instance.
 type Client struct{ arr *arr.Client }
+
+// RemoveSeries removes the series with its files, specials included (spec 6.7).
+func (c *Client) RemoveSeries(ctx context.Context, id int, addExclusion bool) error {
+	q := url.Values{"deleteFiles": {"true"}, "addImportListExclusion": {strconv.FormatBool(addExclusion)}}
+	if err := c.arr.Send(ctx, http.MethodDelete, "/api/v3/series/"+strconv.Itoa(id), q, nil, nil); err != nil {
+		return fmt.Errorf("remove series: %w", err)
+	}
+	return nil
+}
+
+// DeleteEpisodeFiles deletes these episode files in one request.
+func (c *Client) DeleteEpisodeFiles(ctx context.Context, fileIDs []int) error {
+	body := struct {
+		IDs []int `json:"episodeFileIds"`
+	}{fileIDs}
+	if err := c.arr.Send(ctx, http.MethodDelete, "/api/v3/episodefile/bulk", nil, body, nil); err != nil {
+		return fmt.Errorf("delete episode files: %w", err)
+	}
+	return nil
+}
+
+// UnmonitorEpisodes unmonitors these episodes.
+func (c *Client) UnmonitorEpisodes(ctx context.Context, episodeIDs []int) error {
+	body := struct {
+		IDs       []int `json:"episodeIds"`
+		Monitored bool  `json:"monitored"`
+	}{episodeIDs, false}
+	if err := c.arr.Send(ctx, http.MethodPut, "/api/v3/episode/monitor", nil, body, nil); err != nil {
+		return fmt.Errorf("unmonitor episodes: %w", err)
+	}
+	return nil
+}
+
+// UnmonitorSeasons unmonitors these seasons of a series. Sonarr changes a series only as a
+// whole, so the series is read, the seasons are changed, and every other field is sent back
+// as it came. A season Sonarr does not list is an error: no guessing (spec 6.8, rule 5).
+// Sonarr 4.0.12 then unmonitors the episodes of those seasons too (spec 16.2).
+func (c *Client) UnmonitorSeasons(ctx context.Context, seriesID int, seasons []int) error {
+	path := "/api/v3/series/" + strconv.Itoa(seriesID)
+	var series map[string]json.RawMessage
+	if err := c.arr.Get(ctx, path, nil, &series); err != nil {
+		return fmt.Errorf("unmonitor seasons: %w", err)
+	}
+	var list []map[string]json.RawMessage
+	if err := json.Unmarshal(series["seasons"], &list); err != nil {
+		return fmt.Errorf("unmonitor seasons: the series has no season list: %w", err)
+	}
+	want := map[int]bool{}
+	for _, n := range seasons {
+		want[n] = true
+	}
+	for _, s := range list {
+		var n int
+		if err := json.Unmarshal(s["seasonNumber"], &n); err != nil {
+			return fmt.Errorf("unmonitor seasons: a season has no number: %w", err)
+		}
+		if want[n] {
+			s["monitored"] = json.RawMessage("false")
+			delete(want, n)
+		}
+	}
+	if len(want) > 0 {
+		missing := make([]int, 0, len(want))
+		for n := range want {
+			missing = append(missing, n)
+		}
+		sort.Ints(missing)
+		return fmt.Errorf("unmonitor seasons: Sonarr does not list season %d", missing[0])
+	}
+	raw, err := json.Marshal(list)
+	if err != nil {
+		return err
+	}
+	series["seasons"] = raw
+	if err := c.arr.Send(ctx, http.MethodPut, path, nil, series, nil); err != nil {
+		return fmt.Errorf("unmonitor seasons: %w", err)
+	}
+	return nil
+}
 
 // New returns a client. baseURL has no trailing slash.
 func New(baseURL, apiKey string, hc *http.Client) *Client {

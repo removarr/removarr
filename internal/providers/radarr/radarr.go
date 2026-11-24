@@ -1,10 +1,12 @@
-// Package radarr reads movies from Radarr.
+// Package radarr reads movies from Radarr and removes them.
 package radarr
 
 import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"github.com/removarr/removarr/internal/domain"
 	"github.com/removarr/removarr/internal/providers"
@@ -13,11 +15,21 @@ import (
 
 var (
 	_ providers.MovieManager = (*Client)(nil)
+	_ providers.MovieWriter  = (*Client)(nil)
 	_ providers.Tester       = (*Client)(nil)
 )
 
 // Client talks to one Radarr instance.
 type Client struct{ arr *arr.Client }
+
+// RemoveMovie removes the movie with its file (spec 6.7).
+func (c *Client) RemoveMovie(ctx context.Context, id int, addExclusion bool) error {
+	q := url.Values{"deleteFiles": {"true"}, "addImportExclusion": {strconv.FormatBool(addExclusion)}}
+	if err := c.arr.Send(ctx, http.MethodDelete, "/api/v3/movie/"+strconv.Itoa(id), q, nil, nil); err != nil {
+		return fmt.Errorf("remove movie: %w", err)
+	}
+	return nil
+}
 
 // New returns a client. baseURL has no trailing slash.
 func New(baseURL, apiKey string, hc *http.Client) *Client {
