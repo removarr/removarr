@@ -31,7 +31,11 @@ func (f *fakeStore) TakePlan(_ context.Context, id string, now time.Time) (domai
 	return f.plan, nil
 }
 
-func (f *fakeStore) RecordAction(_ context.Context, a domain.Action, drop []domain.RowRef) (int64, error) {
+// RecordAction honours ctx as the real store does: an ended context fails the write.
+func (f *fakeStore) RecordAction(ctx context.Context, a domain.Action, drop []domain.RowRef) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	if len(f.recorded)+1 == f.failAt {
 		return 0, errors.New("disk full")
 	}
@@ -138,6 +142,41 @@ func TestExecuteRunsToTheEndWhenTheRequestGoesAway(t *testing.T) {
 	}
 	if c.dead != 0 || len(res.Actions) != 2 || res.Actions[1].Outcome != domain.OutcomeDone {
 		t.Errorf("dead contexts %d, actions %+v; want both items run with a live context", c.dead, res.Actions)
+	}
+}
+
+// slow is an app whose first call takes longer than the execution may.
+type slow struct {
+	*apps
+	wait  time.Duration
+	calls int
+}
+
+func (s *slow) RemoveMovie(ctx context.Context, id int, excl bool) error {
+	s.calls++
+	if s.calls == 1 {
+		time.Sleep(s.wait)
+	}
+	return s.apps.RemoveMovie(ctx, id, excl)
+}
+
+func TestEveryItemIsRecordedWhenTheExecutionRunsOutOfTime(t *testing.T) {
+	a := newApps(t)
+	sl := &slow{apps: a, wait: 50 * time.Millisecond}
+	st := &fakeStore{plan: domain.Plan{ID: "p1", Items: []domain.PlanItem{movieItem(1, "tmdb:1", 0), movieItem(2, "tmdb:2", 0)}}}
+	svc := newService(a, st)
+	svc.Timeout = 5 * time.Millisecond
+	svc.Build = func(context.Context) (Providers, error) {
+		p := a.providers()
+		p.Movies = sl
+		return p, nil
+	}
+	res, err := svc.Execute(ctx, "p1")
+	if err != nil {
+		t.Fatalf("err = %v; every item must still be recorded", err)
+	}
+	if len(st.recorded) != 2 || len(res.Actions) != 2 {
+		t.Errorf("recorded %d, actions %d; want both items in the history", len(st.recorded), len(res.Actions))
 	}
 }
 

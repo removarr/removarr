@@ -34,7 +34,12 @@ type Service struct {
 	own gate.Gate
 }
 
-const defaultTimeout = 30 * time.Minute
+const (
+	defaultTimeout = 30 * time.Minute
+	// recordTimeout limits one history write. It runs on a context the execution's
+	// deadline cannot end, so an item is recorded even after the execution ran out of time.
+	recordTimeout = time.Minute
+)
 
 // Execute runs the plan with this ID (spec 6.11). It is refused with a *gate.BusyError while
 // another job runs, and with store.ErrPlanNotFound or store.ErrPlanExpired; those change
@@ -64,15 +69,16 @@ func (s *Service) Execute(ctx context.Context, planID string) (Result, error) {
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	detached := context.WithoutCancel(ctx)
+	runCtx, cancel := context.WithTimeout(detached, timeout)
 	defer cancel()
 
 	r := newRun(p, s.DryRun)
 	res := Result{PlanID: plan.ID, DryRun: s.DryRun, Actions: []domain.Action{}}
 	for _, it := range plan.Items {
-		a, drop := r.item(ctx, it)
+		a, drop := r.item(runCtx, it)
 		a.PlanID, a.At = plan.ID, s.Now()
-		id, err := s.Store.RecordAction(ctx, a, drop)
+		id, err := s.record(detached, a, drop)
 		if err != nil {
 			return res, fmt.Errorf("record an item: %w", err)
 		}
@@ -80,4 +86,13 @@ func (s *Service) Execute(ctx context.Context, planID string) (Result, error) {
 		res.Actions = append(res.Actions, a)
 	}
 	return res, nil
+}
+
+// record writes one item to the history on a context of its own, derived from the request
+// but cancelled by neither the request nor the execution's deadline (spec 6.11: each item is
+// recorded as soon as it finishes).
+func (s *Service) record(ctx context.Context, a domain.Action, drop []domain.RowRef) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, recordTimeout)
+	defer cancel()
+	return s.Store.RecordAction(ctx, a, drop)
 }
