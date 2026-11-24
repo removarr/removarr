@@ -194,3 +194,71 @@ func TestSameHostRedirectsStopsAfterTenRedirects(t *testing.T) {
 		t.Error("an endless redirect loop must fail")
 	}
 }
+
+// closedServer returns the URL and host:port of a server that no longer listens.
+func closedServer(t *testing.T) (string, string) {
+	t.Helper()
+	srv := httptest.NewServer(http.NotFoundHandler())
+	u, addr := srv.URL, srv.Listener.Addr().String()
+	srv.Close()
+	return u, addr
+}
+
+func TestATransportErrorDoesNotRepeatTheURL(t *testing.T) {
+	base, addr := closedServer(t)
+	err := Do(ctx, &http.Client{}, http.MethodDelete, base+"/api/v3/movie/12?deleteFiles=true", nil, nil, nil)
+	if err == nil {
+		t.Fatal("want an error from a server that is gone")
+	}
+	for _, s := range []string{base, addr, "/api/v3/movie/12"} {
+		if strings.Contains(err.Error(), s) {
+			t.Errorf("err = %q repeats %q", err, s)
+		}
+	}
+	if !strings.Contains(err.Error(), "DELETE request") {
+		t.Errorf("err = %q, want it to name the method", err)
+	}
+}
+
+func TestATimedOutRequestStillReportsTheDeadline(t *testing.T) {
+	srv := serve(t, func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	c, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancel()
+	err := Get(c, srv.Client(), srv.URL+"/slow", nil, nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v, want context.DeadlineExceeded", err)
+	}
+	if err != nil && strings.Contains(err.Error(), srv.URL) {
+		t.Errorf("err = %q repeats the URL", err)
+	}
+}
+
+func TestARefusedRedirectDoesNotNameTheHosts(t *testing.T) {
+	b := serve(t, func(w http.ResponseWriter, r *http.Request) {})
+	a := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, b.URL, http.StatusFound)
+	})
+	c := &http.Client{CheckRedirect: SameHostRedirects}
+	err := Get(ctx, c, a.URL, nil, nil)
+	if err == nil {
+		t.Fatal("a redirect to another host must fail")
+	}
+	for _, s := range []string{a.Listener.Addr().String(), b.Listener.Addr().String(), "127.0.0.1"} {
+		if strings.Contains(err.Error(), s) {
+			t.Errorf("err = %q names %q", err, s)
+		}
+	}
+
+	from, _ := http.NewRequest(http.MethodGet, "https://media.example/api", nil)
+	to, _ := http.NewRequest(http.MethodGet, "http://media.example/api", nil)
+	if err := SameHostRedirects(to, []*http.Request{from}); err == nil || strings.Contains(err.Error(), "media.example") {
+		t.Errorf("downgrade: err = %v, want a refusal that names no host", err)
+	}
+}
+
+func TestRequestErrorReplacesTheHostOnlyAsAWholeWord(t *testing.T) {
+	err := RequestError(http.MethodGet, "http://pi:8080/api", errors.New("write: broken pipe from pi"))
+	if got, want := err.Error(), "GET request: write: broken pipe from the app"; got != want {
+		t.Errorf("err = %q, want %q", got, want)
+	}
+}

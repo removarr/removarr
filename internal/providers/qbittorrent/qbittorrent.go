@@ -226,7 +226,7 @@ func (c *Client) once(ctx context.Context, method, path string, q, form url.Valu
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, payload)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, httpjson.RequestError(method, u, err)
 	}
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -234,7 +234,7 @@ func (c *Client) once(ctx context.Context, method, path string, q, form url.Valu
 	req.Header.Set("Referer", c.baseURL)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, httpjson.RequestError(method, u, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -247,15 +247,16 @@ func (c *Client) once(ctx context.Context, method, path string, q, form url.Valu
 // login starts a session. The cookie jar keeps the session cookie for later requests.
 func (c *Client) login(ctx context.Context) error {
 	form := url.Values{"username": {c.username}, "password": {c.password}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v2/auth/login", strings.NewReader(form.Encode()))
+	u := c.baseURL + "/api/v2/auth/login"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
 	if err != nil {
-		return err
+		return fmt.Errorf("qBittorrent login: %w", httpjson.RequestError(http.MethodPost, u, err))
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Referer", c.baseURL)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("qBittorrent login: %w", httpjson.RequestError(http.MethodPost, u, err))
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 200))

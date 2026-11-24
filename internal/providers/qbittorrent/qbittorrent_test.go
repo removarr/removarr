@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -330,5 +331,50 @@ func TestRemoveDownloadRefusesAnIDThatIsNotAHash(t *testing.T) {
 	}
 	if len(f.deleted) != 0 {
 		t.Errorf("requests sent: %q", f.deleted)
+	}
+}
+
+func TestATransportErrorDoesNotRepeatTheURL(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	base, addr := srv.URL, srv.Listener.Addr().String()
+	srv.Close()
+	c, err := New(base, "", "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = c.RemoveDownload(ctx, "0123456789abcdef0123456789abcdef01234567", true)
+	if err == nil {
+		t.Fatal("want an error from a server that is gone")
+	}
+	for _, s := range []string{base, addr, "deleteFiles"} {
+		if strings.Contains(err.Error(), s) {
+			t.Errorf("err = %q repeats %q", err, s)
+		}
+	}
+}
+
+func TestALoginTransportErrorDoesNotRepeatTheURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/auth/login" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+			conn.Close() // no answer at all
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c, err := New(srv.URL, "admin", "secret", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Downloads(ctx)
+	if err == nil {
+		t.Fatal("want an error when the login gets no answer")
+	}
+	for _, s := range []string{srv.URL, srv.Listener.Addr().String(), "auth/login"} {
+		if strings.Contains(err.Error(), s) {
+			t.Errorf("err = %q repeats %q", err, s)
+		}
 	}
 }

@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -46,7 +48,7 @@ func Do(ctx context.Context, c *http.Client, method, rawURL string, header http.
 	}
 	req, err := http.NewRequestWithContext(ctx, method, rawURL, reader)
 	if err != nil {
-		return err
+		return RequestError(method, rawURL, err)
 	}
 	for name, values := range header {
 		req.Header[name] = values
@@ -58,7 +60,7 @@ func Do(ctx context.Context, c *http.Client, method, rawURL string, header http.
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return err
+		return RequestError(method, rawURL, err)
 	}
 	defer resp.Body.Close()
 
@@ -73,6 +75,78 @@ func Do(ctx context.Context, c *http.Client, method, rawURL string, header http.
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil
+}
+
+// RequestError returns an error from building or sending a request without the request's
+// URL or host. A *url.Error repeats the full URL, query included, and a dial error the
+// address it dialled; such an error ends up in the history and the API (AGENTS.md: an error
+// about a URL never repeats the URL). errors.Is and errors.As still reach the wrapped errors,
+// so a timeout stays context.DeadlineExceeded.
+func RequestError(method, rawURL string, err error) error {
+	hide := []string{rawURL}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		hide = append(hide, ue.URL)
+		err = ue.Err
+	}
+	if u, perr := url.Parse(rawURL); perr == nil && u.Host != "" {
+		hide = append(hide, u.Host, u.Hostname())
+	}
+	msg := withoutAddr(err)
+	for _, s := range hide {
+		msg = replaceWord(msg, s, "the app")
+	}
+	return &requestError{msg: fmt.Sprintf("%s request: %s", strings.ToUpper(method), msg), err: err}
+}
+
+type requestError struct {
+	msg string
+	err error
+}
+
+func (e *requestError) Error() string { return e.msg }
+func (e *requestError) Unwrap() error { return e.err }
+
+// withoutAddr returns err's message, leaving out the addresses a *net.OpError names: the
+// address dialled can be the app's IP address, which the URL does not show.
+func withoutAddr(err error) string {
+	if op, ok := err.(*net.OpError); ok && op.Err != nil {
+		return op.Op + " " + op.Net + ": " + withoutAddr(op.Err)
+	}
+	return err.Error()
+}
+
+// replaceWord replaces each occurrence of old in s that is not part of a longer name, so a
+// host called "pi" does not turn "pipe" into something else.
+func replaceWord(s, old, repl string) string {
+	if old == "" {
+		return s
+	}
+	var b strings.Builder
+	for {
+		i := strings.Index(s, old)
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		end := i + len(old)
+		if nameByte(s, i-1) || nameByte(s, end) {
+			b.WriteString(s[:end])
+		} else {
+			b.WriteString(s[:i])
+			b.WriteString(repl)
+		}
+		s = s[end:]
+	}
+}
+
+// nameByte reports whether s[i] exists and can be part of a host name.
+func nameByte(s string, i int) bool {
+	if i < 0 || i >= len(s) {
+		return false
+	}
+	c := s[i]
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '.' && i+1 < len(s) && s[i+1] != ' '
 }
 
 // ParseTime parses the timestamp formats the supported apps use. It returns nil when s is
@@ -99,7 +173,7 @@ func ParseTime(s string) *time.Time {
 // to another host or port, or from https to http. removarr contacts only the apps configured
 // in its settings (spec section 10), and Go would otherwise forward a custom header such as
 // X-Api-Key to wherever a server redirects, encrypted or not. It stops after 10 redirects,
-// as Go's default policy does.
+// as Go's default policy does. Its errors name no host: they reach the history and the API.
 func SameHostRedirects(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
@@ -110,10 +184,10 @@ func SameHostRedirects(req *http.Request, via []*http.Request) error {
 		return fmt.Errorf("refusing to follow a redirect that changes the method from %s to %s", via[0].Method, req.Method)
 	}
 	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
-		return fmt.Errorf("refusing to follow a redirect from %s to %s", via[0].URL.Host, req.URL.Host)
+		return errors.New("refusing to follow a redirect to another host or port")
 	}
 	if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
-		return fmt.Errorf("refusing to follow a redirect from https to %s on %s", req.URL.Scheme, req.URL.Host)
+		return errors.New("refusing to follow a redirect from https to http")
 	}
 	return nil
 }
