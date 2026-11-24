@@ -15,7 +15,7 @@ type rowRef struct {
 	Key  string          `json:"key"`
 }
 
-// readRows decodes and checks the body of an ignore request: {"rows":[{"list":…,"key":…}]}.
+// readRows decodes and checks the body of a request that names rows (ignore, un-ignore, plan): {"rows":[{"list":…,"key":…}]}.
 func readRows(w http.ResponseWriter, r *http.Request) ([]rowRef, error) {
 	var req struct {
 		Rows []rowRef `json:"rows"`

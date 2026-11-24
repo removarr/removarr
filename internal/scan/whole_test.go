@@ -659,3 +659,68 @@ func TestWholeTorrentsJudgesALargePackOncePerGroup(t *testing.T) {
 		t.Errorf("candidates = %+v, want the one row naming the pack", series.Candidates)
 	}
 }
+
+func TestWholeTorrentsSaysWhatAHeldRowWaitsFor(t *testing.T) {
+	tests := []struct {
+		name      string
+		series    ManagerFiles
+		downloads []string
+		rows      []Row
+		want      string
+	}{
+		{
+			name:      "its torrent is in a queue",
+			series:    ManagerFiles{Links: link(nil, map[int]string{11: "q"}, "q"), Files: libFiles(11)},
+			downloads: []string{"q"},
+			rows:      []Row{seasonRow(1, []int{11}, []int{11})},
+			want:      WaitQueued,
+		},
+		{
+			name:      "its pack backs a file that stays",
+			series:    ManagerFiles{Links: link(nil, map[int]string{11: "pack", 21: "pack"}), Files: libFiles(11, 21)},
+			downloads: []string{"pack"},
+			rows:      []Row{seasonRow(1, []int{11}, []int{11})},
+			want:      WaitTorrentStays,
+		},
+		{
+			name:   "its file holds an episode that stays",
+			series: ManagerFiles{Links: links(), Files: []LibraryFile{held(30, 12, 21)}},
+			rows:   []Row{seasonRow(1, []int{12}, []int{30})},
+			want:   WaitFileStays,
+		},
+		{
+			name:      "a queue is named before a pack that stays",
+			series:    ManagerFiles{Links: link(nil, map[int]string{11: "q", 12: "pack", 21: "pack"}, "q"), Files: libFiles(11, 12, 21)},
+			downloads: []string{"q", "pack"},
+			rows:      []Row{seasonRow(1, []int{11, 12}, []int{11, 12})},
+			want:      WaitQueued,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.series.Manager = ManagerSeries
+			x := NewLinkIndex(tt.series)
+			var downloads []domain.Download
+			for _, id := range tt.downloads {
+				downloads = append(downloads, dl(id))
+			}
+			res := &ListResult{Rows: tt.rows}
+			WholeTorrents(domain.DefaultRules(), x, downloads, res)
+			if len(res.Held) != 1 {
+				t.Fatalf("held %d rows, want 1", len(res.Held))
+			}
+			if got := res.Held[0].WaitReason; got != tt.want {
+				t.Errorf("WaitReason = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWholeTorrentsGivesAListedRowNoWaitReason(t *testing.T) {
+	x := NewLinkIndex(ManagerFiles{Manager: ManagerMovies, Links: link(nil, map[int]string{10: "h1"}), Files: libFiles(10)})
+	res := &ListResult{Rows: []Row{movieRow("tmdb:1", 1, 10)}}
+	WholeTorrents(domain.DefaultRules(), x, []domain.Download{dl("h1")}, res)
+	if len(res.Candidates) != 1 || res.Candidates[0].WaitReason != "" {
+		t.Errorf("candidates = %+v, want one listed row without a wait reason", res.Candidates)
+	}
+}

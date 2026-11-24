@@ -218,3 +218,97 @@ func TestViewHoldsBackASeriesRowMergedOverANowIgnoredSeason(t *testing.T) {
 		}
 	}
 }
+
+// holdsRows is what one invented scan stored for the tests of Holds: two tied movies; two
+// held movies; a merged series row tied to a movie; a movie on its own; and three movies tied
+// to each other, so that each of them is tied to two rows.
+func holdsRows() []domain.Candidate {
+	none := []domain.TorrentInfo{}
+	refA := domain.RowRef{List: domain.ListMovies, Key: "tmdb:1", Title: "Movie A"}
+	refB := domain.RowRef{List: domain.ListMovies, Key: "tmdb:2", Title: "Movie B"}
+	refM := domain.RowRef{List: domain.ListSeries, Key: "tvdb:100", Title: "The Show"}
+	refG := domain.RowRef{List: domain.ListMovies, Key: "tmdb:7", Title: "Movie G"}
+	refH := domain.RowRef{List: domain.ListMovies, Key: "tmdb:8", Title: "Movie H"}
+	refI := domain.RowRef{List: domain.ListMovies, Key: "tmdb:9", Title: "Movie I"}
+	return []domain.Candidate{
+		{List: domain.ListMovies, Key: "tmdb:1", Title: "Movie A", Torrents: none, TiedWith: []domain.RowRef{refB}},
+		{List: domain.ListMovies, Key: "tmdb:2", Title: "Movie B", Torrents: none, TiedWith: []domain.RowRef{refA}},
+		{List: domain.ListMovies, Key: "tmdb:3", Title: "Movie C", Torrents: none, Waiting: true, WaitReason: WaitQueued},
+		{List: domain.ListMovies, Key: "tmdb:4", Title: "Movie D", Torrents: none, Waiting: true},
+		{List: domain.ListSeries, Key: "tvdb:100", Title: "The Show", Scope: domain.ScopeSeries, Merged: true, Torrents: none,
+			TiedWith: []domain.RowRef{{List: domain.ListMovies, Key: "tmdb:5", Title: "Movie E"}}},
+		{List: domain.ListMovies, Key: "tmdb:5", Title: "Movie E", Torrents: none, TiedWith: []domain.RowRef{refM}},
+		{List: domain.ListMovies, Key: "tmdb:6", Title: "Movie F", Torrents: none},
+		{List: domain.ListMovies, Key: "tmdb:7", Title: "Movie G", Torrents: none, TiedWith: []domain.RowRef{refH, refI}},
+		{List: domain.ListMovies, Key: "tmdb:8", Title: "Movie H", Torrents: none, TiedWith: []domain.RowRef{refG, refI}},
+		{List: domain.ListMovies, Key: "tmdb:9", Title: "Movie I", Torrents: none, TiedWith: []domain.RowRef{refG, refH}},
+	}
+}
+
+func TestHoldsReason(t *testing.T) {
+	rows := holdsRows()
+	row := func(key string) domain.Candidate {
+		for _, c := range rows {
+			if c.Key == key {
+				return c
+			}
+		}
+		t.Fatalf("no row %s", key)
+		return domain.Candidate{}
+	}
+	tests := []struct {
+		name    string
+		ignores []domain.Ignore
+		key     string
+		want    string
+	}{
+		{"a row nothing holds", nil, "tmdb:6", ""},
+		{"an ignored row", []domain.Ignore{ignore(domain.IgnoreMovie, "tmdb:6")}, "tmdb:6", HoldIgnored},
+		{"a held row with its reason", nil, "tmdb:3", WaitQueued},
+		{"a held row from an older scan", nil, "tmdb:4", HoldWaiting},
+		{"a row tied to an ignored row", []domain.Ignore{ignore(domain.IgnoreMovie, "tmdb:2")}, "tmdb:1", `It is tied to "Movie B", which is ignored.`},
+		{"a series row merged over a now ignored season", []domain.Ignore{ignore(domain.IgnoreSeason, "tvdb:100:s1")}, "tvdb:100", HoldMerged},
+		{"a row tied to such a series row", []domain.Ignore{ignore(domain.IgnoreSeason, "tvdb:100:s1")}, "tmdb:5", `It is tied to "The Show", which waits for the next scan.`},
+		{"a row tied to a listed row and to an ignored row after it", []domain.Ignore{ignore(domain.IgnoreMovie, "tmdb:9")}, "tmdb:7", `It is tied to "Movie I", which is ignored.`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewHolds(rows, NewIgnoreSet(tt.ignores))
+			if got := h.Reason(row(tt.key)); got != tt.want {
+				t.Errorf("Reason(%s) = %q, want %q", tt.key, got, tt.want)
+			}
+		})
+	}
+}
+
+// Holds and View apply the same effects: a stored row has no reason to be held exactly when
+// View shows it.
+func TestHoldsReasonIsEmptyExactlyForTheRowsViewShows(t *testing.T) {
+	rows := holdsRows()
+	sets := map[string][]domain.Ignore{
+		"nothing ignored": nil,
+		"a season ignore": {ignore(domain.IgnoreSeason, "tvdb:100:s1")},
+	}
+	for _, c := range rows {
+		kind := domain.IgnoreMovie
+		if c.List == domain.ListSeries {
+			kind = domain.IgnoreSeries
+		}
+		sets["ignore "+c.Key] = []domain.Ignore{ignore(kind, c.Key)}
+	}
+	for name, ignores := range sets {
+		set := NewIgnoreSet(ignores)
+		h := NewHolds(rows, set)
+		for _, c := range rows {
+			shown := false
+			for _, s := range View(c.List, rows, set).Shown {
+				if s.Key == c.Key {
+					shown = true
+				}
+			}
+			if reason := h.Reason(c); (reason == "") != shown {
+				t.Errorf("%s: %s: Reason = %q, shown = %v; want an empty reason exactly when shown", name, c.Key, reason, shown)
+			}
+		}
+	}
+}

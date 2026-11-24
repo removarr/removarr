@@ -10,13 +10,24 @@ import (
 type Row struct {
 	Candidate domain.Candidate // everything except Torrents, BelowSeedMin and TiedWith
 	Manager   string           // ManagerMovies or ManagerSeries: whose IDs the next two fields hold
+	ManagerID int              // the movie or the series in that manager: what remove-movie and remove-series need (spec 6.7)
 	ItemIDs   []int            // the movies or episodes Delete affects
 	FileIDs   []int            // the library files Delete removes
 }
 
+// What a held row waits for (spec 6.3, 6.10). A group can wait for several reasons; the
+// first of these that applies is given.
+const (
+	WaitQueued       = "It waits: a torrent that backs its files is in a media manager's queue."
+	WaitTorrentStays = "It waits: a torrent that backs its files also backs a library file that stays."
+	WaitFileStays    = "It waits: one of its library files also holds an item that stays."
+)
+
 // WholeTorrents applies the whole-torrent rule to the rows of the watched lists. It fills
 // Candidates, Held and Waiting of each list from its Rows: Held keeps the rows of groups that
-// wait, marked Waiting, so that ignores can be applied to the stored rows later (spec 6.5).
+// wait, marked Waiting and with what the group waits for in WaitReason (one of the Wait…
+// texts), so that ignores can be applied to the stored rows later (spec 6.5) and a plan can
+// say why a row cannot be deleted (spec 6.10).
 //
 // Rows whose files are backed by the same torrent, or that delete the same library file,
 // form a group, directly or through a chain. A torrent blocks its group when it is queued
@@ -122,25 +133,38 @@ func WholeTorrents(r domain.Rules, x *LinkIndex, downloads []domain.Download, li
 			return answer
 		}
 
-		waits := false
+		queued, torrentStays, fileStays := false, false, false
 		for _, i := range group {
 			manager := rows[i].row.Manager
 			for _, file := range rows[i].row.FileIDs {
 				if id := x.source[ref{manager, file}]; present(id) && stays(id) {
-					waits = true
+					if x.queued[id] {
+						queued = true
+					} else {
+						torrentStays = true
+					}
 				}
 				// A file goes as a whole: it may not take an item with it that stays.
 				for _, item := range x.holds[ref{manager, file}] {
 					if !deletedItems[ref{manager, item}] {
-						waits = true
+						fileStays = true
 					}
 				}
 			}
 		}
-		if waits {
+		reason := ""
+		switch {
+		case queued:
+			reason = WaitQueued
+		case torrentStays:
+			reason = WaitTorrentStays
+		case fileStays:
+			reason = WaitFileStays
+		}
+		if reason != "" {
 			for _, i := range group {
 				c := rows[i].row.Candidate
-				c.Torrents, c.BelowSeedMin, c.TiedWith, c.Waiting = []domain.TorrentInfo{}, false, nil, true
+				c.Torrents, c.BelowSeedMin, c.TiedWith, c.Waiting, c.WaitReason = []domain.TorrentInfo{}, false, nil, true, reason
 				rows[i].list.Held = append(rows[i].list.Held, c)
 				rows[i].list.Waiting++
 			}

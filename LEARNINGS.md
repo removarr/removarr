@@ -51,6 +51,13 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-23. **The per-season merge is the one place a scan uses ignores, and it reads them once, at the start.** An ignore saved while the scan runs is not seen, so the scan can merge over a season that is now ignored. Such rows carry `merged` and wait until the next scan.
 - 2026-11-23. **Scans from before stage 2b stored no held rows.** Their waiting count reads 0 and the ignored view cannot show held rows until the next scan.
 
+## Plans
+
+- 2026-11-24. **A plan reads everything a scan reads.** Whether a torrent can go depends on everything else it backs, so re-reading only the selected items cannot decide it. The planner reads and evaluates through `scanner.Read` and `scanner.Evaluate`, the code a scan uses (spec 6.10).
+- 2026-11-24. **One read is not proof.** History is read before the queue, so a download imported between the two reads looks unlinked for that read. A plan removes a torrent only when the latest scan and the planner's read agree on it, in both directions; a row that waited in the latest scan is skipped (`changedSinceScan`).
+- 2026-11-24. **Shared data is decided against everything that stays.** One staying torrent with an unknown content path keeps the data of every torrent a plan removes, and paths are compared without regard to case, so two Linux directories that differ only in case keep their data. Both err toward keeping. A plan's `keepData` assumes every item succeeds; the executor must decide again from the torrents it actually removed.
+- 2026-11-24. **A test fixture whose file IDs equal its episode IDs hides swapped IDs.** Unmonitoring files instead of episodes passed every test until the IDs differed. Sonarr's episode IDs are global, so such a swap would unmonitor episodes of other series.
+
 ## Security
 
 - 2026-11-22. **Comparing Origin with Host does not stop DNS rebinding.** A page that points its own domain name at removarr's address makes the browser send that name as both headers. Only checking the Host header against IP addresses, `localhost` and listed names does (`guard`, `REMOVARR_ALLOWED_HOSTS`, spec section 10).
@@ -71,11 +78,13 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-22. **To check a change of rules, scan with the old and the new binary against the same apps** and compare row by row. Every difference must be one the raw data explains.
 - 2026-11-19. **Print counts and sizes only** when working with real data. Titles, names, URLs and keys stay out of logs, commits and reports.
 - 2026-11-19. **On macOS a binary started by an automated agent session can get "no route to host" for addresses on the local network**, while `curl` works. This is the system's local-network privacy control. Run the binary from a normal terminal instead of working around it.
+- 2026-11-24. **A replay gets removarr to the apps from an agent session, read-only.** A local stub in the owner's `~/.claude/removarr-check` answers removarr's requests. It fetches each GET with `/usr/bin/curl`, which may reach the local network, and refuses every other method and every path removarr does not read. Claude Code's auto mode blocks this as a containment escape unless the owner allows the two launch scripts by their exact commands. Together with dry run, nothing that changes an app can reach it; three changing requests sent on purpose were all refused and none was fetched. The first check through it gave the same lists as stage 2a.
 - 2026-11-19. **A full scan of the reference stack takes about 19 seconds** on a Raspberry Pi 5: 277 movies, 134 series, 381 torrents, 90 file lists.
 
 ## Tests and reviews
 
 - 2026-11-19. **A test that never asserts the row it is about passes under almost any fault.** Four one-line faults in the linking glue survived a green suite until tests asserted which torrent a series row names. After adding glue code, break it on purpose and check that a test fails.
 - 2026-11-22. **Have the reviewer break the code.** Each task review changed one line at a time in a scratch copy and looked for a test that failed. The changes that survived showed tests that passed for the wrong reason: the two ends of an episode range, the list a waiting row is counted in, and the media manager missing from a key.
+- 2026-11-24. **A Copilot review can come back empty because of quota.** The review summary then says the requesting user has insufficient remaining quota, with no threads, and `wait-for-copilot.sh` still ends with 0 because a review exists. Read the summary before treating the review as done; such a refusal counts as no review (pull request #13).
 - 2026-11-22. **An outside review still finds things after two internal ones.** The automated review of pull request 1 raised seven points, all real, most about what happens between two steps: two reads, two writes, two requests.
 - 2026-11-22. **A subtest name ends up in the path of its temporary directory.** A name with a `%` in it broke opening a database there. Share one fixture across such cases.

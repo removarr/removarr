@@ -20,6 +20,7 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 | `internal/domain` | Product-neutral types |
 | `internal/scan` | Every rule about what is a candidate, as pure functions. No I/O |
 | `internal/scanner` | Runs one scan: reads the apps, calls `scan`, stores the result |
+| `internal/planner` | Builds the plan for a deletion: reads and evaluates through `scanner`, then `Make` decides the items, steps and skips. Executes nothing |
 | `internal/providers/*`, `internal/httpjson` | One client per app. They translate an API into `domain` types and decide nothing |
 | `internal/store` | SQLite: settings, scans, candidates. Migrations in `internal/store/migrations` |
 | `internal/config` | Environment variables and saved settings; saved settings take priority |
@@ -36,7 +37,7 @@ The checks. All of them must pass:
 gofmt -l .        # must print nothing
 go vet ./...
 go test ./...
-go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/
+go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/ ./internal/planner/
 go build ./...
 ```
 
@@ -70,7 +71,7 @@ REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
 
 - Never commit or print URLs, keys, user names, file names or titles from anyone's library. Record measurements as counts and sizes only.
 - `.env` in the repository root holds the owner's connection details. It is git-ignored. Read it by path when a check needs it; never print or copy it.
-- Checking against the real apps is done with the owner: build the binary, hand over the command, compare the result. See "Checking against real apps" in `LEARNINGS.md`.
+- Checking against the real apps is done by the agent, never handed to the owner: removarr runs with dry run on, against the owner's local replay, which forwards only reads. Nothing is ever deleted while testing; a check with dry run off is the owner's. The implement-issue skill, step 6, has the details, and so does "Checking against real apps" in `LEARNINGS.md`.
 
 ## Git and pull requests
 

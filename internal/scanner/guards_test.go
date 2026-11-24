@@ -10,7 +10,7 @@ import (
 
 // fetchedFrom builds the Fetched of a scan over p, as Run does.
 func fetchedFrom(p Providers) Fetched {
-	return service(p, withUser(), &fakeStore{}).fetch(ctx, p, withUser())
+	return Read(ctx, p, withUser(), nil)
 }
 
 // A scan reads the files of a download for linking by content whenever downloads and a

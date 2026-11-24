@@ -43,7 +43,7 @@ Stop and tell the owner when the argument is anything else, when a URL points to
 | 3 | Decide what is open | `brainstorming`, cut down | Every question the issue leaves open has its answer in the spec |
 | 4 | Plan | `writing-plans` | The plan is committed |
 | 5 | Build | `subagent-driven-development` | Every task is built and reviewed, and the branch is reviewed as a whole |
-| 6 | Check | `verification-before-completion` | The checks pass on the last commit and the project files are up to date |
+| 6 | Check | `verification-before-completion` | The checks pass on the last commit, the project files are up to date, and the check on the real apps is done or not needed |
 | 7 | Open the pull request | `finishing-a-development-branch` | The pull request exists and says `Closes #N` |
 | 8 | Ask Copilot and wait | | Copilot has reviewed and CI is green |
 | 9 | Answer the review | `receiving-code-review` | Every finding of the review has an answer |
@@ -101,7 +101,21 @@ Follow `subagent-driven-development` as written: a fresh implementer per task, a
 
 - Run every check on the last commit and read the output. "It passed earlier" is not a result.
 - Bring the files up to date that `AGENTS.md` lists under "Files to keep up to date".
-- **Real apps.** A run does not start removarr against the owner's apps. If the issue changes what a scan lists or what removarr sends to an app, prepare that check: the command to run and what to compare. The owner runs it before merging. See "Checking against real apps" in `LEARNINGS.md`.
+- **Real apps.** If the issue changes what a scan lists or what removarr sends to an app, the run does the check on the real apps itself. It does not hand the owner a command. See "Checking against real apps" in `LEARNINGS.md`.
+  - removarr never talks to the apps directly. It runs against the owner's replay: a local stub that forwards only GET requests to the endpoints removarr reads, fetches them with `curl`, and refuses everything else. The scripts are on the owner's machine in `~/.claude/removarr-check`. The owner allowed them in Claude Code's permissions, with these exact commands:
+    - `bash ~/.claude/removarr-check/run-replay.sh` starts the stub.
+    - `bash ~/.claude/removarr-check/run-server.sh <source tree>` builds removarr and starts it against the stub.
+    Run each in the background with `~` written out as the home directory: the permission matches the literal command.
+  - **Nothing is ever deleted.** Two guards apply, and each one alone keeps the apps unchanged:
+    - removarr runs with `REMOVARR_DRY_RUN=true`;
+    - the stub refuses every request other than a read, and logs it as `REFUSED`.
+    A run never turns dry run off, never sends a changing request any other way, and never lets the stub forward one. A check the issue asks for with dry run off, a real deletion, is the owner's to do. Name it in the pull request and the report.
+  - Compare what removarr returns with the apps' own answers, read through the stub. The cache under `~/.claude/removarr-check` holds what the check read; read it there. After the check:
+    - read the `REFUSED` lines in the stub's log and say in the pull request how many there were;
+    - stop both processes;
+    - delete the cache, the config directory and the binaries.
+  - Report counts and sizes only, never titles, names, paths or keys.
+  - If the stub or a permission is missing, stop and ask the owner once. Do not reach the apps another way.
 
 ### 7. Open the pull request
 
@@ -111,7 +125,7 @@ Push the branch and open the pull request against `main`. Its title is the issue
 - `Closes #N` on a line of its own. GitHub then closes the issue when the pull request is merged.
 - **Decisions:** every spec amendment and every ruling the owner should know, each with its cost if it is wrong.
 - **How it was checked:** the commands, and counts where something was measured.
-- **Check on the real apps:** not needed, or waiting for the owner (with the command), or done (with the result).
+- **Check on the real apps:** not needed, or done (with the result and the number of requests the stub refused). If the issue also asks for a check with dry run off, name it here as the owner's.
 - **Not done:** what went to issue #8.
 
 GitHub reads "close", "fix" or "resolve" in front of an issue number as an order, even inside a sentence such as "this does not fix #8". For an issue that must stay open, write "Part of #8".
@@ -126,7 +140,8 @@ gh pr checks <PR> --watch
 
 - `wait-for-copilot.sh` looks every two minutes for up to 30 minutes. If your tool tells you when a background command ends, start it in the background. If not, run it and wait for it to end. Do not look by hand in the meantime.
 - It ends with 0 when the review is there, and prints the summary of the review and the open threads. It ends with 2 when Copilot was not asked, with 3 when no review came, with 4 when the pull request is no longer open.
-- After a 3, ask Copilot once more and wait once more. If again no review comes, go on without it and say so in the pull request and in the report.
+- A review whose summary says that Copilot could not review, for example because the quota is used up, counts as no review, although the script ends with 0. Read the summary.
+- After a 3, or after such a refusal, ask Copilot once more and wait once more. If again no review comes, go on without it and say so in the pull request and in the report.
 - CI must be green. Fix a red CI before anything else. If `gh pr checks` reports no checks, CI has not started yet: run it again a minute later.
 
 ### 9. Answer the review
@@ -166,8 +181,9 @@ A run is done when all of this holds:
 - In the issue, the boxes that the pull request covers are ticked, and each item under "Carried over" says how it ended.
 - Issue #8 has the findings that were not fixed, and the items this pull request resolved are ticked there.
 - `LEARNINGS.md` has what the next run would otherwise find out again.
+- The check on the real apps is done, or not needed. The stub and removarr are stopped, and the cached data is deleted.
 
-Then write the report to the owner: the pull request, what was built, how it was checked, the decisions and what each costs if it is wrong, the threads left open, and what is left for the owner to do (the check on the real apps, the merge).
+Then write the report to the owner: the pull request, what was built, how it was checked, the decisions and what each costs if it is wrong, the threads left open, and what is left for the owner to do (the merge, and a check with dry run off if the issue asks for one).
 
 Do not merge. Do not start the next issue.
 
@@ -183,7 +199,7 @@ Only these stop a run:
 - A question that neither the spec nor its two principles answer.
 - The plan of an issue that adds a changing or deleting call to an app (step 4).
 - A new third-party module.
-- Anything that leaves the repository and its pull request: a release, a published image, a repository setting, a call that changes something in an app.
+- Anything that leaves the repository and its pull request: a release, a published image, a repository setting, a call that changes something in an app. A run never deletes anything in the owner's apps, not even to test: real deletions are the owner's.
 - The checks fail on `main` before any change.
 - What the issue depends on is still open, or `gh` cannot see the repository.
 

@@ -40,6 +40,11 @@ type Store interface {
 	RemoveIgnores(ctx context.Context, rows []domain.RowRef) error
 }
 
+// Planner builds plans for deletions. *planner.Service satisfies it.
+type Planner interface {
+	Plan(ctx context.Context, rows []domain.RowRef) (domain.Plan, error)
+}
+
 // Apps gives access to the configured apps. *app.Apps satisfies it.
 type Apps interface {
 	Tester(ctx context.Context, app string) (providers.Tester, error)
@@ -52,6 +57,7 @@ type Server struct {
 	Store   Store
 	Scanner Scanner
 	Apps    Apps
+	Planner Planner
 	Log     *slog.Logger
 	Now     func() time.Time // nil means time.Now
 
@@ -75,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/candidates", s.candidates)
 	mux.HandleFunc("POST /api/ignores", s.addIgnores)
 	mux.HandleFunc("DELETE /api/ignores", s.removeIgnores)
+	mux.HandleFunc("POST /api/plans", s.buildPlan)
 	return guard(mux, s.Config.Env().AllowedHosts)
 }
 

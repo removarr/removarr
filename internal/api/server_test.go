@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/removarr/removarr/internal/config"
+	"github.com/removarr/removarr/internal/domain"
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
@@ -64,6 +65,7 @@ type harness struct {
 	config  *config.Service
 	scanner *fakeScanner
 	apps    *fakeApps
+	planner *fakePlanner
 	handler http.Handler
 }
 
@@ -86,12 +88,14 @@ func newHarness(t *testing.T, envConn map[string]string) *harness {
 		}, st),
 		scanner: &fakeScanner{},
 		apps:    &fakeApps{testers: map[string]providers.Tester{}},
+		planner: &fakePlanner{},
 	}
 	srv := &Server{
 		Config:  h.config,
 		Store:   st,
 		Scanner: h.scanner,
 		Apps:    h.apps,
+		Planner: h.planner,
 		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	h.handler = srv.Handler()
@@ -279,4 +283,15 @@ func TestGuardStopsARequestMadeThroughAnotherSitesName(t *testing.T) {
 	if rec := h.do(http.MethodPost, "/api/connections/sonarr/test", "", rebound); rec.Code != http.StatusForbidden {
 		t.Errorf("connection test: status = %d, want 403", rec.Code)
 	}
+}
+
+type fakePlanner struct {
+	rows []domain.RowRef
+	plan domain.Plan
+	err  error
+}
+
+func (f *fakePlanner) Plan(_ context.Context, rows []domain.RowRef) (domain.Plan, error) {
+	f.rows = rows
+	return f.plan, f.err
 }

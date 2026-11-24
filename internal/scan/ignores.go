@@ -1,6 +1,10 @@
 package scan
 
-import "github.com/removarr/removarr/internal/domain"
+import (
+	"fmt"
+
+	"github.com/removarr/removarr/internal/domain"
+)
 
 // IgnoreSet holds the user's ignores by key (spec 6.5).
 type IgnoreSet map[string]domain.Ignore
@@ -153,4 +157,50 @@ func (e effects) tiedToOut(c domain.Candidate) bool {
 		}
 	}
 	return false
+}
+
+// Why the current ignores, or the whole-torrent rule, keep a row from being deleted (spec
+// 6.10). Rows tied to a row that is out give the texts of Holds.Reason.
+const (
+	HoldIgnored = "It is ignored. Un-ignore it before deleting it."
+	HoldWaiting = "It waits: it shares a torrent or a library file with something that stays."
+	HoldMerged  = "It was merged from its seasons while one of them was ignored. Scan again."
+)
+
+// Holds answers, for the rows of one scan and the current ignores, why a row cannot be
+// deleted. It applies the same effects as View.
+type Holds struct{ e effects }
+
+// NewHolds prepares the answers for rows, which are every row of one scan, listed and held.
+func NewHolds(rows []domain.Candidate, ignores IgnoreSet) Holds {
+	return Holds{newEffects(rows, ignores)}
+}
+
+// Reason returns why c cannot be deleted now, or "" when nothing holds it: it is hidden by
+// an ignore, held back by the whole-torrent rule or by a season ignore made during the scan,
+// or tied to a row that is.
+func (h Holds) Reason(c domain.Candidate) string {
+	switch {
+	case h.e.ignores.Hides(c.List, c.Key):
+		return HoldIgnored
+	case c.Waiting && c.WaitReason != "":
+		return c.WaitReason
+	case c.Waiting:
+		return HoldWaiting // a scan from before stage 2c stored no reason
+	case h.e.heldBack(c):
+		return HoldMerged
+	}
+	for _, ref := range c.TiedWith {
+		r, ok := h.e.rows[rowID{ref.List, ref.Key}]
+		if !ok {
+			r = domain.Candidate{List: ref.List, Key: ref.Key}
+		}
+		switch {
+		case h.e.ignores.Hides(r.List, r.Key):
+			return fmt.Sprintf("It is tied to %q, which is ignored.", ref.Title)
+		case h.e.heldBack(r):
+			return fmt.Sprintf("It is tied to %q, which waits for the next scan.", ref.Title)
+		}
+	}
+	return ""
 }

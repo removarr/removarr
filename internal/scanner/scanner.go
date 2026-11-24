@@ -136,7 +136,10 @@ func (s *Service) run(ctx context.Context) error {
 		return fmt.Errorf("record scan: %w", err)
 	}
 
-	fetched := s.fetch(ctx, p, rules)
+	fetched := Read(ctx, p, rules, s.setPhase)
+	if fetched.Files != nil {
+		s.Log.Info("read file lists for linking by content", "downloads", len(fetched.Files))
+	}
 	fetched.Ignored = scan.NewIgnoreSet(ignores).Keys()
 	s.setPhase("applying the rules")
 	summary, candidates := Compute(rules, s.Now(), fetched)
@@ -188,26 +191,31 @@ type Fetched struct {
 	Ignored map[string]bool
 }
 
-// fetch reads the apps one after another. The media server's library is read only when
-// counting users are selected, because without them no watched list can be produced. Once
-// the download client and at least one media manager have answered, it reads the file
-// lists linking by content needs (spec 6.6): those of the downloads history does not link
-// to a library file, and those of the downloads at least 50 MB larger than the library
-// files history names them the source of.
-func (s *Service) fetch(ctx context.Context, p Providers, rules domain.Rules) Fetched {
+// Read reads the apps one after another, as a scan does. phase, when not nil, is told what
+// is being read. The media server's library is read only when counting users are selected,
+// because without them no watched list can be produced. Once the download client and at
+// least one media manager have answered, it reads the file lists linking by content needs
+// (spec 6.6): those of the downloads history does not link to a library file, and those of
+// the downloads at least 50 MB larger than the library files history names them the source
+// of.
+func Read(ctx context.Context, p Providers, rules domain.Rules, phase func(string)) Fetched {
+	setPhase := func(string) {}
+	if phase != nil {
+		setPhase = phase
+	}
 	var f Fetched
 	if p.Downloads != nil {
-		s.setPhase("reading the download client")
+		setPhase("reading the download client")
 		f.Downloads.Configured = true
 		f.Downloads.Value, f.Downloads.Err = p.Downloads.Downloads(ctx)
 	}
 	if p.Movies != nil {
-		s.setPhase("reading the movie manager")
+		setPhase("reading the movie manager")
 		f.Movies.Configured = true
 		f.Movies.Value, f.Movies.Err = p.Movies.Movies(ctx)
 	}
 	if p.Series != nil {
-		s.setPhase("reading the series manager")
+		setPhase("reading the series manager")
 		f.Series.Configured = true
 		f.Series.Value, f.Series.Err = p.Series.Series(ctx)
 	}
@@ -217,16 +225,13 @@ func (s *Service) fetch(ctx context.Context, p Providers, rules domain.Rules) Fe
 	// look unlinked, so their file lists are read too; the torrent list is not produced in
 	// that case.
 	if f.Downloads.ok() && (f.Movies.ok() || f.Series.ok()) {
-		s.setPhase("matching downloads to library files")
+		setPhase("matching downloads to library files")
 		f.Files, f.Downloads.Err = readFiles(ctx, p.Downloads, rules, f)
-		if f.Downloads.Err == nil {
-			s.Log.Info("read file lists for linking by content", "downloads", len(f.Files))
-		}
 	}
 	if p.MediaServer != nil {
 		f.Library.Configured = true
 		if len(rules.CountingUsers) > 0 {
-			s.setPhase("reading the media server")
+			setPhase("reading the media server")
 			f.Users, f.Library.Err = p.MediaServer.Users(ctx)
 			if f.Library.Err == nil {
 				f.Library.Value, f.Library.Err = p.MediaServer.Library(ctx, rules.CountingUsers)
@@ -291,11 +296,29 @@ const (
 	roleDownloads   = "download client"
 )
 
-// Compute applies the rules to what was fetched. A list is produced only when everything
+// Evaluation is what the rules made of one read: the scan's result, and what a plan needs
+// besides it (spec 6.10).
+type Evaluation struct {
+	Summary    domain.ScanSummary
+	Candidates []domain.Candidate // every row of the produced lists, listed and held back, as a scan stores them
+	Rows       []scan.Row         // the qualifying rows of the produced watched lists, with what Delete touches
+	Fetched    Fetched            // what was read, with each media manager's links extended by content
+	Index      *scan.LinkIndex    // links by history and by content
+	History    *scan.LinkIndex    // links by history alone
+}
+
+// Compute applies the rules to what was fetched and returns what a scan stores. A list is
+// produced only when everything it depends on was read completely (spec 6.8, rule 5).
+func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, []domain.Candidate) {
+	e := Evaluate(rules, now, f)
+	return e.Summary, e.Candidates
+}
+
+// Evaluate applies the rules to what was fetched. A list is produced only when everything
 // it depends on was read completely (spec 6.8, rule 5); otherwise its summary carries the
 // reason and it has no rows. The candidates include the rows the whole-torrent rule holds
 // back, marked Waiting: the lists apply ignores to them when they are read (spec 6.5).
-func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, []domain.Candidate) {
+func Evaluate(rules domain.Rules, now time.Time, f Fetched) Evaluation {
 	summary := domain.ScanSummary{Lists: map[domain.ListKind]domain.ListSummary{}, RootFolders: []domain.RootFolder{}}
 	candidates := []domain.Candidate{}
 
@@ -320,6 +343,7 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 	if f.Downloads.ok() && (f.Movies.ok() || f.Series.ok()) && f.Files == nil {
 		f.Downloads.Err = errors.New("its file lists were not read")
 	}
+	history := scan.NewLinkIndex(linkData(&f, nil)...)
 	index := scan.NewLinkIndex(linkData(&f, f.Files)...)
 
 	// add writes a list's summary and appends its candidates. res is nil when the list
@@ -377,7 +401,11 @@ func Compute(rules domain.Rules, now time.Time, f Fetched) (domain.ScanSummary, 
 		torrents = scan.Torrents(scan.TorrentsInput{Rules: rules, Downloads: f.Downloads.Value, Index: index})
 	}
 	add(domain.ListTorrents, problem, &torrents)
-	return summary, candidates
+	e := Evaluation{Summary: summary, Candidates: candidates, Rows: []scan.Row{}, Fetched: f, Index: index, History: history}
+	for _, l := range watched {
+		e.Rows = append(e.Rows, l.Rows...)
+	}
+	return e
 }
 
 // torrentsProblem explains why the orphan torrent list cannot be produced, or returns "".

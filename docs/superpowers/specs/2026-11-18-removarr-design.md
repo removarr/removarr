@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b.
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -192,7 +192,7 @@ A protected series produces no series row and no season rows.
 - Only a row of the latest scan can be ignored. Its title is kept with the ignore, so the ignored view can name it when a later scan no longer has the row.
 - Ignoring and un-ignoring take effect at once, without a new scan. A scan stores every row that qualifies, also those that wait (6.3), and the lists apply the current ignores each time they are read: an ignored row is hidden, and a row that is tied to a hidden row waits. This gives the same lists as a new scan would, because a group that loses a row always waits: the torrent or file it shared with that row now backs something that stays. One exception: un-ignoring a season does not merge season rows into a series row (6.3) before the next scan. The reverse is held back instead: a series row that a scan merged while one of its seasons was not yet ignored, because the ignore came during the scan, waits until the next scan, and so does every row tied to it.
 - The ignored view of a list shows one entry per ignore: the row as the latest scan has it, or only its key and title when the latest scan has no such row, for example a season ignore in whole-series mode. A season row hidden by an ignore of its series is not a separate entry; un-ignoring the series brings it back.
-- A row the latest scan holds back as waiting stays waiting in the ignored view and after it is un-ignored.
+- A row the latest scan holds back as waiting stays waiting in the ignored view and after it is un-ignored. The ignored view says what it waits for.
 
 ### 6.6 Torrents
 
@@ -242,7 +242,7 @@ With both minimums off, nothing is flagged. The flag is information only. It app
 |---|---|
 | Movie | Remove the movie from Radarr, with its files. |
 | Series row, series ended | Remove the series from Sonarr, with its files (specials included). |
-| Series row, still airing | Delete the episode files in regular seasons, all of which are watched. Unmonitor those episodes. Unmonitor each season that has finished airing. The series stays, and upcoming episodes still download. |
+| Series row, still airing | Delete the episode files in regular seasons, all of which are watched. Unmonitor those episodes. Unmonitor each of those seasons that has finished airing. The series stays, and upcoming episodes still download. |
 | Season row | Delete the season's episode files. Unmonitor those episodes. Unmonitor the season if it has finished airing. The series stays. |
 | Orphan or unlinked torrent | None. |
 
@@ -261,12 +261,14 @@ Notes:
 - **Data outside the library.** A torrent can hold files that are not in the library, because they were never imported or were replaced since. They go with the torrent. A torrent's data outside the library is its size minus the sizes of the library files it backs. The row and the confirmation state this amount for every torrent where it is 50 MB or more. It is information only and never blocks a deletion.
 - A torrent that is associated with a movie or episode by content (6.6) is treated the same as one associated by history.
 - **Exclusion list:** when the setting is on, removing a movie from Radarr or a series from Sonarr also adds it to that app's import exclusion list, so an import list does not add it back.
-- **Shared data:** if a torrent being removed has the same content path as a torrent that is not being removed, removarr removes the torrent entry and keeps the data.
+- **Shared data:** if a torrent being removed has the same content path as a torrent that is not being removed, or one of the two paths lies inside the other, removarr removes the torrent entry and keeps the data. A torrent whose content path the download client does not report keeps its data too, and so does every torrent being removed while a torrent that stays has no reported content path: unsure means keep. Paths are compared without regard to case or to the kind and number of separators, which only ever keeps more. The plan states this for each torrent; when the plan is executed, removarr decides it again from the torrents that are actually removed, because a failed item keeps its torrents (6.8, rule 4).
+- **Linked by file size.** The plan marks each torrent that is tied to the deleted items only by content (6.6), so that the case of two unrelated files of the same size can be checked before confirming.
+- A torrent appears once in a plan. When a selected torrent row is removed with a selected movie or series anyway, the torrent row is skipped and names that item.
 - Deleting an orphan or unlinked torrent never changes anything in Sonarr or Radarr.
 
 ### 6.8 Safety rules
 
-1. **Nothing is deleted without a confirmed plan.** Selecting Delete asks the server for a plan. The server builds it from live data, not from the stored scan: each selected item is re-read from the apps and re-evaluated with the same rules as the scan. Items that no longer qualify are listed in the plan as skipped, with the reason. The confirmation dialog shows the plan. Only a confirmed plan is executed.
+1. **Nothing is deleted without a confirmed plan.** Selecting Delete asks the server for a plan. The server builds it from live data, not from the stored scan: the apps are read again and every selected item is re-evaluated with the same rules as the scan (6.10). Items that no longer qualify are listed in the plan as skipped, with the reason. The confirmation dialog shows the plan. Only a confirmed plan is executed.
 2. **Plans expire** ten minutes after they are built. An expired plan cannot be executed; the user rebuilds it.
 3. **Order per item:** media manager first, then torrents. If the media manager step fails, the torrent steps for that item are skipped. Tied rows (6.3) count as one item: all of their media manager steps come first.
 4. **Failures are contained.** A failed item is recorded with its error and the remaining items continue. Anything left behind, such as a torrent whose media was already removed, appears as an orphan in the next scan.
@@ -283,6 +285,22 @@ Notes:
 - A movie or series row's size is the sum of the library file sizes, as reported by the media manager, for the files Delete would remove.
 - A torrent row's size is its size as reported by the download client.
 - Sizes are labelled as sizes, not as space that will be freed, because removarr cannot see hard links (section 3). A plan never keeps a torrent that backs the files it deletes (6.3).
+
+### 6.10 Building a plan
+
+Decided from the principles in section 2 while building stage 2c.
+
+- **Live data.** The planner reads every configured app the way a scan does, the file lists for linking by content included, and applies 6.1 to 6.6 with the current ignores. Re-reading only the selected items is not enough: whether a torrent can go depends on everything else it backs (6.3).
+- **Selected rows.** Each selected row, named by list and key, is looked up in that result:
+  - When its list cannot be produced (6.8, rule 5), the row is skipped with the list's error. A movie or series therefore needs every configured media manager.
+  - When the latest scan does not hold the row, or the new read no longer produces it, the row is skipped as no longer qualifying.
+  - An ignored row is skipped (5.3).
+  - A row that waits is skipped with what it waits for: a shared torrent that is in a queue, a shared torrent that also backs a library file that stays, a shared file that also holds an episode that stays, a tied row that is ignored, or a series row merged over a season that is now ignored (6.5).
+- **Items.** A selected row and the rows it is tied to (6.3) form one item. The rows that were not selected are added and marked, naming the selected row and the torrents they share, or a shared file; an added row the latest scan did not hold is marked as such. A group with an ignored row, or with a row that waited in the latest scan, is skipped. Several selected rows of one group make one item.
+- **Two reads.** History is read before the queue, so a download imported between the two reads looks unlinked for that read. A torrent is therefore removed only when two reads agree: the latest scan, from which the rows were selected, and the planner's own read. An item is skipped as changed since the scan when the planner would remove a torrent that the latest scan did not name for any of its rows, and when the latest scan named a torrent for its rows that is still in the download client and that the planner would now keep. A row that waited in the latest scan is skipped too: the user has not seen it listed. A torrent row must be a row of the latest scan and still be an orphan or unlinked torrent.
+- **Contents of an item:** its rows with their sizes; the media manager steps of 6.7 with the IDs the media manager needs; the torrents it removes, each with the seeding flag, the data outside the library, whether its data is kept (shared data, 6.7) and whether it is linked by file size; and the torrents associated with its rows that stay, with the reason: in a queue, or backing a library file that stays.
+- A torrent row becomes an item of its own, with the torrent and no media manager step.
+- The plan is stored with its expiry (6.8, rule 2) and returned to the user for confirmation.
 
 ## 7. Architecture
 
@@ -310,7 +328,7 @@ The UI is compiled to static files and embedded in the Go binary, so the whole a
 | `httpjson` | JSON request helper and timestamp parsing shared by the provider implementations. | nothing |
 | `scan` | The rules of section 6.1 to 6.6, as pure functions from snapshots to candidates. No I/O. | `domain` |
 | `scanner` | Runs one scan: reads every configured app, calls `scan`, and stores the result. | `providers`, `scan`, `store` |
-| `planner` | Builds a plan for selected items from live data (6.7, 6.8). | `providers`, `scan`, `domain` |
+| `planner` | Builds a plan for selected items from live data (6.7, 6.8, 6.10). It reads and evaluates through `scanner`, so a plan applies exactly the rules of a scan. | `scanner`, `providers`, `scan`, `domain` |
 | `executor` | Runs a plan step by step and records results. | `providers`, `store` |
 | `store` | SQLite persistence. | `domain` |
 | `config` | Environment variables and the UI-over-env precedence. | `store` |
@@ -329,7 +347,6 @@ Illustrative shape, not final signatures.
   - return a library snapshot for a set of users: movies and episodes with their external IDs, and per user the played flag, last played date and favourite flag.
 - **MovieManager** (Radarr) and **SeriesManager** (Sonarr)
   - return a snapshot: items, files and sizes, tags, series status and air dates, torrent links from history, queue hashes, root folder free space;
-  - re-read a single item (for planning);
   - remove a movie or series, delete episode files, unmonitor episodes and seasons.
 - **DownloadClient**
   - list downloads: ID, name, size, state, category, tags, content path, date added, and optionally ratio, seeding time and tracker;

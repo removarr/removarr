@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -64,5 +65,19 @@ func TestTorrents(t *testing.T) {
 	}
 	if got := unlinked.Torrents[0].SeedingDays; got == nil || *got != 30 {
 		t.Errorf("SeedingDays = %v, want 30", got)
+	}
+}
+
+func TestTorrentDetailsIsWhatATorrentRowShows(t *testing.T) {
+	r := domain.DefaultRules()
+	r.MinRatio = 2
+	ratio := 1.0
+	d := dl("abc", func(d *domain.Download) { d.Name = "Some.Torrent"; d.Ratio = &ratio })
+	res := Torrents(TorrentsInput{Rules: r, Downloads: []domain.Download{d}, Index: NewLinkIndex()})
+	if len(res.Candidates) != 1 || !reflect.DeepEqual(TorrentDetails(r, d), res.Candidates[0].Torrents[0]) {
+		t.Errorf("TorrentDetails = %+v, want what the torrent row shows: %+v", TorrentDetails(r, d), res.Candidates)
+	}
+	if !TorrentDetails(r, d).BelowSeedMin {
+		t.Error("a ratio of 1 against a minimum of 2 is not flagged")
 	}
 }

@@ -46,4 +46,7 @@ func TestJSONNamesOfTheTiedAndOutsideAndWaitingFields(t *testing.T) {
 
 	has(keys(Candidate{Merged: true}), "merged", true)
 	has(keys(Candidate{}), "merged", false)
+
+	has(keys(Candidate{Waiting: true, WaitReason: "It waits."}), "waitReason", true)
+	has(keys(Candidate{}), "waitReason", false)
 }

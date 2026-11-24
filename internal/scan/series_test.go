@@ -577,3 +577,16 @@ func TestSeriesWatchedByInAnyMode(t *testing.T) {
 		t.Errorf("WatchedBy = %v, want [Alice]", got)
 	}
 }
+
+func TestSeriesRowsNameTheSeriesInItsManager(t *testing.T) {
+	watched := map[string]domain.UserState{"a": played("2026-03-01T20:00:00Z")}
+	s := show(true, ep(11, 1, 1, 11), ep(21, 2, 1, 0)) // season 2 has no file
+	s.ID = 7
+	eps := []domain.ServerEpisode{sep(1, 1, watched)}
+	for _, unit := range []string{domain.UnitSeries, domain.UnitSeason} {
+		res := Series(seriesInput(s, eps, func(in *SeriesInput) { in.Rules.SeriesUnit = unit }))
+		if len(res.Rows) != 1 || res.Rows[0].ManagerID != 7 {
+			t.Errorf("%s: rows = %+v, want one row with ManagerID 7", unit, res.Rows)
+		}
+	}
+}
