@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/scan"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
 )
@@ -23,11 +24,17 @@ func (f fakeServer) Users(context.Context) ([]domain.User, error) {
 func (f fakeServer) Library(context.Context, []string) (domain.Library, error) { return f.lib, nil }
 
 type fakeMovies struct {
-	snap domain.MovieSnapshot
-	err  error
+	snap   domain.MovieSnapshot
+	err    error
+	onRead func() // nil, or called when the movies are read
 }
 
-func (f fakeMovies) Movies(context.Context) (domain.MovieSnapshot, error) { return f.snap, f.err }
+func (f fakeMovies) Movies(context.Context) (domain.MovieSnapshot, error) {
+	if f.onRead != nil {
+		f.onRead()
+	}
+	return f.snap, f.err
+}
 
 type fakeSeries struct{ snap domain.SeriesSnapshot }
 
@@ -114,6 +121,23 @@ func TestPlanAppliesTheCurrentIgnores(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got.Items) != 0 || len(got.Skipped) != 1 {
+		t.Errorf("plan = %+v, want tmdb:1 skipped as ignored", got)
+	}
+}
+
+// Reading the apps takes a while; an ignore saved meanwhile must hold.
+func TestPlanAppliesAnIgnoreSavedWhileTheAppsAreRead(t *testing.T) {
+	f := world()
+	st := &fakeStore{latest: store.Latest{Rows: scanned(rules(), f), Ignores: []domain.Ignore{}}}
+	p := providersOf(f)
+	p.Movies = fakeMovies{snap: f.Movies.Value, onRead: func() {
+		st.latest.Ignores = []domain.Ignore{{Kind: domain.IgnoreMovie, Key: "tmdb:1", Title: "One"}}
+	}}
+	got, err := service(p, st).Plan(context.Background(), []domain.RowRef{movieOne})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 0 || len(got.Skipped) != 1 || got.Skipped[0].Reason != scan.HoldIgnored {
 		t.Errorf("plan = %+v, want tmdb:1 skipped as ignored", got)
 	}
 }

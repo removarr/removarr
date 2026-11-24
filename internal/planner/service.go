@@ -42,16 +42,18 @@ func (s *Service) Plan(ctx context.Context, selected []domain.RowRef) (domain.Pl
 	if err != nil {
 		return domain.Plan{}, fmt.Errorf("load rules: %w", err)
 	}
-	latest, err := s.Store.ReadLatest(ctx)
-	if err != nil {
-		return domain.Plan{}, fmt.Errorf("read the latest scan: %w", err)
-	}
 	p, err := s.Build(ctx)
 	if err != nil {
 		return domain.Plan{}, fmt.Errorf("load connections: %w", err)
 	}
-	ignores := scan.NewIgnoreSet(latest.Ignores)
 	f := scanner.Read(ctx, p, rules, nil)
+	// Read the ignores after the apps: reading them takes a while, and an ignore saved
+	// meanwhile must hold.
+	latest, err := s.Store.ReadLatest(ctx)
+	if err != nil {
+		return domain.Plan{}, fmt.Errorf("read the latest scan: %w", err)
+	}
+	ignores := scan.NewIgnoreSet(latest.Ignores)
 	f.Ignored = ignores.Keys()
 	now := s.Now()
 	items, skipped := Make(Input{
