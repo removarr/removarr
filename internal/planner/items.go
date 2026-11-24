@@ -63,7 +63,8 @@ func (m *maker) addGroup(id rowID, c domain.Candidate) {
 	selected := refOf(c)
 	item := domain.PlanItem{Rows: []domain.PlanRow{}, Steps: m.steps(members), Torrents: m.torrents(members), Kept: m.kept(members)}
 	for _, o := range members {
-		r := domain.PlanRow{Row: o, Shares: shares(o, members)}
+		_, inScan := m.latest[rowID{o.List, o.Key}]
+		r := domain.PlanRow{Row: o, Shares: shares(o, members), NotInScan: !inScan}
 		if o.List != c.List || o.Key != c.Key {
 			with := selected
 			r.Added, r.AddedWith = true, &with

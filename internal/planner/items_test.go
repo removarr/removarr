@@ -278,6 +278,22 @@ func TestMakeSkipsAnItemWhenATorrentTheScanNamedWouldNowStay(t *testing.T) {
 	}
 }
 
+func TestMakeMarksAnAddedRowTheLatestScanDidNotHold(t *testing.T) {
+	f := world()
+	f.Library.Value.Movies[1].States = nil // movie 2 is not watched: it is no row of the scan
+	latest := scanned(rules(), f)
+	// Since the scan, movie 2 was watched, and m1 backs its file too: the movies are tied.
+	f.Library.Value.Movies[1].States = played()
+	f.Movies.Value.Links.FileSource[20] = "m1"
+	item := onlyItem(t)(plan(rules(), f, latest, nil, movieOne))
+	if !reflect.DeepEqual(rowKeys(item), []string{"movies/tmdb:1", "+movies/tmdb:2"}) {
+		t.Fatalf("rows = %v, want One and the added Two", rowKeys(item))
+	}
+	if item.Rows[0].NotInScan || !item.Rows[1].NotInScan {
+		t.Errorf("NotInScan = %v, %v; want false for One and true for Two", item.Rows[0].NotInScan, item.Rows[1].NotInScan)
+	}
+}
+
 func TestMakeSkipsARowWhoseEvaluationHasNoRowToDelete(t *testing.T) {
 	f := world()
 	f.Movies.Value.Links.FileSource[20] = "m1" // m1 backs both movies: they are tied

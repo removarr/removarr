@@ -48,6 +48,7 @@ type PlanRow struct {
 	Added     bool      `json:"added,omitempty"`     // not selected: tied to a selected row
 	AddedWith *RowRef   `json:"addedWith,omitempty"` // the selected row it was added with
 	Shares    []string  `json:"shares,omitempty"`    // IDs of the torrents it shares with other rows of the item; none means a shared library file
+	NotInScan bool      `json:"notInScan,omitempty"` // the latest scan had no such row: the user has not seen it listed
 }
 
 // ManagerStep is one operation in a media manager. ItemID is the movie or the series in
