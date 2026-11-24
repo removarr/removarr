@@ -14,6 +14,12 @@ func changedReason(name string) string {
 	return fmt.Sprintf("It changed since the scan: it would now remove the torrent %q, which the scan did not show. Scan again.", name)
 }
 
+// staysReason is the reason for an item whose new read would keep a torrent, still in the
+// client, that the latest scan named for its rows (spec 6.10, two reads).
+func staysReason(name string) string {
+	return fmt.Sprintf("It changed since the scan: the torrent %q that the scan showed would now stay. Scan again.", name)
+}
+
 // removedWith is the reason for a torrent row whose torrent another item removes.
 func removedWith(title string) string {
 	return fmt.Sprintf("Its torrent is removed with %q anyway.", title)
@@ -44,8 +50,8 @@ func (m *maker) addGroup(id rowID, c domain.Candidate) {
 		}
 		return members[i].Key < members[j].Key
 	})
-	if name, changed := m.changedSinceScan(members); changed {
-		m.skip(id, changedReason(name))
+	if reason := m.changedSinceScan(members); reason != "" {
+		m.skip(id, reason)
 		return
 	}
 
@@ -62,24 +68,37 @@ func (m *maker) addGroup(id rowID, c domain.Candidate) {
 	m.push(item)
 }
 
-// changedSinceScan returns the name of a torrent the new read would remove for the rows that
-// the latest scan did not name for any of them. History is read before the queue, so one
-// read alone can take a download that was just imported for one that backs nothing.
-func (m *maker) changedSinceScan(members []domain.Candidate) (string, bool) {
+// changedSinceScan returns why the two reads disagree about the torrents of an item's rows,
+// or "" when they agree (spec 6.10, two reads). History is read before the queue, so one read
+// alone can take a download that was just imported for one that backs nothing. The reads
+// disagree when the new read would remove a torrent that the latest scan did not name for
+// any of the rows, and when the latest scan named a torrent for one of the rows that is
+// still in the client and that the new read names for none of them: the user selected the
+// rows expecting it to go. A torrent that is gone from the client needs no agreement.
+func (m *maker) changedSinceScan(members []domain.Candidate) string {
 	scanned := map[string]bool{}
 	for _, o := range members {
 		for _, t := range m.latest[rowID{o.List, o.Key}].Torrents {
 			scanned[t.ID] = true
 		}
 	}
+	named := map[string]bool{}
 	for _, o := range members {
 		for _, t := range o.Torrents {
+			named[t.ID] = true
 			if !scanned[t.ID] {
-				return t.Name, true
+				return changedReason(t.Name)
 			}
 		}
 	}
-	return "", false
+	for _, o := range members {
+		for _, t := range m.latest[rowID{o.List, o.Key}].Torrents {
+			if _, inClient := m.downloads[t.ID]; inClient && !named[t.ID] {
+				return staysReason(t.Name)
+			}
+		}
+	}
+	return ""
 }
 
 // shares returns the torrents a row shares with the other rows of its item, sorted.

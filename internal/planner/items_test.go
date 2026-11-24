@@ -261,6 +261,22 @@ func TestMakeUsesTheNewReadWhenATorrentIsGoneSinceTheScan(t *testing.T) {
 	}
 }
 
+func TestMakeSkipsAnItemWhenATorrentTheScanNamedWouldNowStay(t *testing.T) {
+	f := world()
+	latest := scanned(rules(), f)
+	// Since the scan, history no longer links m1 to movie 1, and m1 is still in the client.
+	delete(f.Movies.Value.Links.FileSource, 10)
+	delete(f.Movies.Value.Links.Grabbed, "m1")
+	items, skipped := plan(rules(), f, latest, nil, movieOne)
+	if len(items) != 0 {
+		t.Fatalf("items = %+v, want none", items)
+	}
+	want := `It changed since the scan: the torrent "One.Torrent" that the scan showed would now stay. Scan again.`
+	if got := skips(skipped)["tmdb:1"]; got != want {
+		t.Errorf("reason = %q, want %q", got, want)
+	}
+}
+
 // chain turns world() into a chain of three rows: movie 1 shares m1 with the show, and the
 // show shares the new torrent m2 with the ended series 3 "Other" (tvdb:300), which movie 1
 // shares nothing with.
