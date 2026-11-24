@@ -26,12 +26,13 @@ type Input struct {
 // Why a selected row is skipped. Other reasons come from the rules: a list's error, what a
 // row waits for (scan.Wait…, scan.Hold…), or a change since the scan.
 const (
-	ReasonNotInScan   = "It is not a row of the latest scan. Scan again."
-	ReasonNoLonger    = "It no longer qualifies. Scan again to see why."
-	ReasonGone        = "It is no longer in the download client."
-	ReasonQueuedNow   = "It is in a media manager's queue now."
-	ReasonLinkedNow   = "It backs a library file now."
-	ReasonExcludedNow = "Its category or tag is excluded now."
+	ReasonNotInScan    = "It is not a row of the latest scan. Scan again."
+	ReasonWaitedInScan = "It waited in the latest scan. Scan again."
+	ReasonNoLonger     = "It no longer qualifies. Scan again to see why."
+	ReasonGone         = "It is no longer in the download client."
+	ReasonQueuedNow    = "It is in a media manager's queue now."
+	ReasonLinkedNow    = "It backs a library file now."
+	ReasonExcludedNow  = "Its category or tag is excluded now."
 )
 
 // rowID names a row.
@@ -162,7 +163,8 @@ func (m *maker) add(ref domain.RowRef) {
 		m.skip(id, problem)
 		return
 	}
-	if _, ok := m.latest[id]; !ok {
+	scanned, ok := m.latest[id]
+	if !ok {
 		m.skip(id, ReasonNotInScan)
 		return
 	}
@@ -177,6 +179,12 @@ func (m *maker) add(ref domain.RowRef) {
 	}
 	if reason := m.holds.Reason(c); reason != "" {
 		m.skip(id, reason)
+		return
+	}
+	if scanned.Waiting {
+		// The scan stored the row held back, so the user never saw it listed. A row that still
+		// waits was skipped above with what it waits for.
+		m.skip(id, ReasonWaitedInScan)
 		return
 	}
 	if ref.List == domain.ListTorrents {

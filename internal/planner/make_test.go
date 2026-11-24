@@ -146,3 +146,26 @@ func TestMakeTakesEachSelectedRowOnceAndOrdersTheItems(t *testing.T) {
 		t.Errorf("rows = %v, want %v", got, want)
 	}
 }
+
+func TestMakeSkipsARowThatWaitedInTheLatestScan(t *testing.T) {
+	f := world()
+	f.Movies.Value.Links.FileSource[20] = "m1" // m1 also backs movie 2's file
+	f.Library.Value.Movies[1].States = nil     // and movie 2 is not watched: movie 1 waits
+	latest := scanned(rules(), f)
+	if len(latest) == 0 || latest[0].Key != "tmdb:1" || !latest[0].Waiting {
+		t.Fatalf("latest = %+v, want movie 1 stored as waiting", latest)
+	}
+	// Since the scan, movie 2 was watched: both movies are listed now, tied through m1.
+	f.Library.Value.Movies[1].States = played()
+	items, skipped := plan(rules(), f, latest, nil, movieOne, movieTwo)
+	if len(items) != 0 {
+		t.Fatalf("items = %+v, want none", items)
+	}
+	got := skips(skipped)
+	if got["tmdb:1"] != ReasonWaitedInScan {
+		t.Errorf("tmdb:1: reason = %q, want %q", got["tmdb:1"], ReasonWaitedInScan)
+	}
+	if got["tmdb:2"] != ReasonNotInScan {
+		t.Errorf("tmdb:2: reason = %q, want %q", got["tmdb:2"], ReasonNotInScan)
+	}
+}
