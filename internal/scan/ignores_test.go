@@ -218,3 +218,51 @@ func TestViewHoldsBackASeriesRowMergedOverANowIgnoredSeason(t *testing.T) {
 		}
 	}
 }
+
+func TestHoldsReason(t *testing.T) {
+	none := []domain.TorrentInfo{}
+	refA := domain.RowRef{List: domain.ListMovies, Key: "tmdb:1", Title: "Movie A"}
+	refB := domain.RowRef{List: domain.ListMovies, Key: "tmdb:2", Title: "Movie B"}
+	refM := domain.RowRef{List: domain.ListSeries, Key: "tvdb:100", Title: "The Show"}
+	rows := []domain.Candidate{
+		{List: domain.ListMovies, Key: "tmdb:1", Title: "Movie A", Torrents: none, TiedWith: []domain.RowRef{refB}},
+		{List: domain.ListMovies, Key: "tmdb:2", Title: "Movie B", Torrents: none, TiedWith: []domain.RowRef{refA}},
+		{List: domain.ListMovies, Key: "tmdb:3", Title: "Movie C", Torrents: none, Waiting: true, WaitReason: WaitQueued},
+		{List: domain.ListMovies, Key: "tmdb:4", Title: "Movie D", Torrents: none, Waiting: true},
+		{List: domain.ListSeries, Key: "tvdb:100", Title: "The Show", Scope: domain.ScopeSeries, Merged: true, Torrents: none,
+			TiedWith: []domain.RowRef{{List: domain.ListMovies, Key: "tmdb:5", Title: "Movie E"}}},
+		{List: domain.ListMovies, Key: "tmdb:5", Title: "Movie E", Torrents: none, TiedWith: []domain.RowRef{refM}},
+		{List: domain.ListMovies, Key: "tmdb:6", Title: "Movie F", Torrents: none},
+	}
+	row := func(key string) domain.Candidate {
+		for _, c := range rows {
+			if c.Key == key {
+				return c
+			}
+		}
+		t.Fatalf("no row %s", key)
+		return domain.Candidate{}
+	}
+	tests := []struct {
+		name    string
+		ignores []domain.Ignore
+		key     string
+		want    string
+	}{
+		{"a row nothing holds", nil, "tmdb:6", ""},
+		{"an ignored row", []domain.Ignore{ignore(domain.IgnoreMovie, "tmdb:6")}, "tmdb:6", HoldIgnored},
+		{"a held row with its reason", nil, "tmdb:3", WaitQueued},
+		{"a held row from an older scan", nil, "tmdb:4", HoldWaiting},
+		{"a row tied to an ignored row", []domain.Ignore{ignore(domain.IgnoreMovie, "tmdb:2")}, "tmdb:1", `It is tied to "Movie B", which is ignored.`},
+		{"a series row merged over a now ignored season", []domain.Ignore{ignore(domain.IgnoreSeason, "tvdb:100:s1")}, "tvdb:100", HoldMerged},
+		{"a row tied to such a series row", []domain.Ignore{ignore(domain.IgnoreSeason, "tvdb:100:s1")}, "tmdb:5", `It is tied to "The Show", which waits for the next scan.`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewHolds(rows, NewIgnoreSet(tt.ignores))
+			if got := h.Reason(row(tt.key)); got != tt.want {
+				t.Errorf("Reason(%s) = %q, want %q", tt.key, got, tt.want)
+			}
+		})
+	}
+}
