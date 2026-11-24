@@ -28,7 +28,7 @@ func TestMakeRemovesAMovieFromTheMovieManager(t *testing.T) {
 		r := rules()
 		r.AddExclusionOnDelete = exclude
 		item := onlyItem(t)(same(t, r, world(), nil, movieOne))
-		want := []domain.ManagerStep{{Manager: scan.ManagerMovies, Action: domain.StepRemoveMovie, ItemID: 1, AddExclusion: exclude}}
+		want := []domain.ManagerStep{{Manager: scan.ManagerMovies, Action: domain.StepRemoveMovie, ItemID: 1, RowKey: "tmdb:1", AddExclusion: exclude}}
 		if !reflect.DeepEqual(item.Steps, want) {
 			t.Errorf("exclude=%v: steps = %+v, want %+v", exclude, item.Steps, want)
 		}
@@ -40,7 +40,7 @@ func TestMakeRemovesAMovieFromTheMovieManager(t *testing.T) {
 
 func TestMakeRemovesAnEndedSeriesFromTheSeriesManager(t *testing.T) {
 	item := onlyItem(t)(same(t, rules(), world(), nil, theShow))
-	want := []domain.ManagerStep{{Manager: scan.ManagerSeries, Action: domain.StepRemoveSeries, ItemID: 1}}
+	want := []domain.ManagerStep{{Manager: scan.ManagerSeries, Action: domain.StepRemoveSeries, ItemID: 1, RowKey: "tvdb:100"}}
 	if !reflect.DeepEqual(item.Steps, want) || !reflect.DeepEqual(torrentIDs(item), []string{"p1"}) {
 		t.Errorf("item = %+v, want remove-series and the pack", item)
 	}
@@ -64,9 +64,9 @@ func TestMakeDeletesTheFilesOfARunningSeries(t *testing.T) {
 	running(&f, true)
 	item := onlyItem(t)(same(t, rules(), f, nil, theShow))
 	want := []domain.ManagerStep{
-		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}, RowKey: "tvdb:100"},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}, RowKey: "tvdb:100"},
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}, RowKey: "tvdb:100"},
 	}
 	if !reflect.DeepEqual(item.Steps, want) {
 		t.Errorf("steps = %+v, want %+v", item.Steps, want)
@@ -97,9 +97,9 @@ func TestMakeDeletesTheFilesOfASeasonRow(t *testing.T) {
 	s.Episodes[2].File = mfile(121, 500)
 	item := onlyItem(t)(same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1")))
 	want := []domain.ManagerStep{
-		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}, RowKey: "tvdb:100:s1"},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}, RowKey: "tvdb:100:s1"},
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}, RowKey: "tvdb:100:s1"},
 	}
 	if !reflect.DeepEqual(item.Steps, want) {
 		t.Errorf("steps = %+v, want %+v", item.Steps, want)
@@ -125,9 +125,9 @@ func TestMakeUnmonitorsOnlyTheFinishedSeasonsOfTheRow(t *testing.T) {
 	}
 	item := onlyItem(t)(same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1")))
 	want := []domain.ManagerStep{
-		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}, RowKey: "tvdb:100:s1"},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}, RowKey: "tvdb:100:s1"},
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}, RowKey: "tvdb:100:s1"},
 	}
 	if !reflect.DeepEqual(item.Steps, want) {
 		t.Errorf("steps = %+v, want %+v", item.Steps, want)
