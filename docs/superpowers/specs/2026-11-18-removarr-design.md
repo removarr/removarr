@@ -245,7 +245,7 @@ With both minimums off, nothing is flagged. The flag is information only. It app
 | Series row, still airing | Unmonitor the episodes that have files in regular seasons, all of which are watched. Unmonitor each of those seasons that has finished airing. Delete those episode files. The series stays, and upcoming episodes still download. |
 | Season row | Unmonitor the season's episodes that have files. Unmonitor the season if it has finished airing. Delete those episode files. The series stays. |
 
-Unmonitoring comes before deleting: if the deletion fails, the files stay and nothing is downloaded again; the other way round, a failed unmonitor would leave deleted episodes monitored, and Sonarr would download them again.
+Unmonitoring comes before deleting: if the deletion fails, the files stay and nothing is downloaded again; the other way round, a failed unmonitor would leave deleted episodes monitored, and Sonarr would download them again. Within a plan item, every unmonitor step of every row comes before any other step, since one row can delete a file that holds another row's episode.
 | Orphan or unlinked torrent | None. |
 
 **Download client step.** The same rule applies to every movie, series and season row: after the media manager step, removarr removes, with data, each torrent that

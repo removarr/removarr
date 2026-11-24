@@ -2,6 +2,7 @@ package planner
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -163,6 +164,39 @@ func TestMakeDeletesAFileSharedByTwoSeasonRowsOnce(t *testing.T) {
 	}
 	if !reflect.DeepEqual(deleted, map[int]int{111: 1, 130: 1}) {
 		t.Errorf("files deleted = %v, want 111 and 130 once each", deleted)
+	}
+}
+
+// Season 2's episode shares the file season 1 deletes: it must be unmonitored before that
+// file goes, or a failed step leaves a deleted episode that Sonarr downloads again.
+func TestEveryUnmonitorStepOfAnItemComesBeforeItsDeletes(t *testing.T) {
+	r := rules()
+	r.SeriesUnit = domain.UnitSeason
+	f := world()
+	s := &f.Series.Value.Series[0]
+	s.Ended = false
+	s.Episodes[1].File = mfile(130, 500)
+	s.Episodes = append(s.Episodes,
+		domain.Episode{ID: 21, Season: 2, Number: 1, File: mfile(130, 500)},
+		domain.Episode{ID: 31, Season: 3, Number: 1, File: mfile(131, 500)})
+	f.Series.Value.Links = domain.Links{Grabbed: map[string][]int{}, FileSource: map[int]string{}, Queue: map[string]bool{}}
+	f.Library.Value.Episodes = append(f.Library.Value.Episodes, domain.ServerEpisode{SeriesID: "ss1", Season: 2, Episode: 1, States: played()})
+	item := onlyItem(t)(same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1")))
+	var order []string
+	deleted := false
+	for _, step := range item.Steps {
+		order = append(order, step.RowKey+" "+step.Action)
+		switch step.Action {
+		case domain.StepDeleteEpisodeFiles:
+			deleted = true
+		case domain.StepUnmonitorEpisodes, domain.StepUnmonitorSeasons:
+			if deleted {
+				t.Errorf("steps = %q: an unmonitor step comes after a delete", order)
+			}
+		}
+	}
+	if !deleted || !slices.Contains(order, "tvdb:100:s2 "+domain.StepUnmonitorEpisodes) {
+		t.Fatalf("steps = %q, want season 2 unmonitored and a delete", order)
 	}
 }
 
