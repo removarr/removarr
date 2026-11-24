@@ -54,6 +54,32 @@ func TestMakeListsTheTorrentsThatStay(t *testing.T) {
 	}
 }
 
+func TestMakeDoesNotListATorrentAsKeptThatThePlanRemoves(t *testing.T) {
+	f := world()
+	// b was grabbed for movie 1 and became movie 2's file. Both movies are watched and
+	// selected, so b goes with movie 2: it does not stay for movie 1.
+	f.Movies.Value.Links.Grabbed["b"] = []int{1}
+	f.Movies.Value.Links.FileSource[20] = "b"
+	f.Downloads.Value = append(f.Downloads.Value, domain.Download{ID: "b", Name: "Two.Torrent", ContentPath: "/dl/two"})
+	items, skipped := same(t, rules(), f, nil, movieOne, movieTwo)
+	if len(items) != 2 || len(skipped) != 0 {
+		t.Fatalf("items = %+v, skipped = %+v, want the two movies", items, skipped)
+	}
+	if !reflect.DeepEqual(torrentIDs(items[1]), []string{"b"}) {
+		t.Fatalf("Two: torrents = %v, want b", torrentIDs(items[1]))
+	}
+	for _, it := range items {
+		if it.Kept == nil {
+			t.Errorf("%v: kept is nil, want empty", rowKeys(it))
+		}
+		for _, k := range it.Kept {
+			if k.Torrent.ID == "b" {
+				t.Errorf("%v: kept lists b, which the plan removes", rowKeys(it))
+			}
+		}
+	}
+}
+
 func TestMakeKeepsTheDataATorrentThatStaysUses(t *testing.T) {
 	tests := []struct {
 		name string

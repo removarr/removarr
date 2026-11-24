@@ -74,9 +74,10 @@ func (m *maker) kept(members []domain.Candidate) []domain.KeptTorrent {
 	return out
 }
 
-// finish decides, once every item is known, which torrents keep their data: those whose
-// content path another torrent that stays uses too, and those whose path is unknown (spec
-// 6.7, shared data).
+// finish completes what needs the whole plan. It decides which torrents keep their data:
+// those whose content path another torrent that stays uses too, and those whose path is
+// unknown (spec 6.7, shared data). And it drops from each item's kept torrents those that
+// another item of the plan removes: they do not stay (spec 6.10).
 func (m *maker) finish() {
 	removed := map[string]bool{}
 	for _, it := range m.items {
@@ -89,6 +90,13 @@ func (m *maker) finish() {
 			t := &m.items[i].Torrents[j]
 			t.KeepData = m.sharesData(t.Torrent.ID, removed)
 		}
+		stay := []domain.KeptTorrent{}
+		for _, k := range m.items[i].Kept {
+			if !removed[k.Torrent.ID] {
+				stay = append(stay, k)
+			}
+		}
+		m.items[i].Kept = stay
 	}
 }
 
