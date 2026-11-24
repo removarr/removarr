@@ -24,6 +24,7 @@ type fakeQbit struct {
 	torrents string            // body of /torrents/info
 	trackers map[string]string // hash -> body of /torrents/trackers
 	files    map[string]string // hash -> body of /torrents/files; an unknown hash gets 404
+	deleted  []string          // "hash deleteFiles" of each removal seen
 }
 
 func (f *fakeQbit) handler() http.Handler {
@@ -65,6 +66,13 @@ func (f *fakeQbit) handler() http.Handler {
 			return
 		}
 		fmt.Fprint(w, body)
+	}))
+	mux.HandleFunc("/api/v2/torrents/delete", guarded(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		f.deleted = append(f.deleted, r.FormValue("hashes")+" "+r.FormValue("deleteFiles"))
 	}))
 	mux.HandleFunc("/api/v2/app/version", guarded(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "v5.0.3")
@@ -261,5 +269,62 @@ func TestARedirectToAnotherHostIsNotFollowed(t *testing.T) {
 	}
 	if n := reached.Load(); n != 0 {
 		t.Errorf("the other host received %d requests, want none", n)
+	}
+}
+
+func TestRemoveDownloadSendsTheHashAndWhetherToDeleteTheData(t *testing.T) {
+	f := &fakeQbit{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	c, _ := New(srv.URL, "", "", time.Second)
+	hash := "0123456789abcdef0123456789abcdef01234567"
+	if err := c.RemoveDownload(ctx, hash, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RemoveDownload(ctx, hash, false); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{hash + " true", hash + " false"}
+	if !reflect.DeepEqual(f.deleted, want) {
+		t.Errorf("deleted = %q, want %q", f.deleted, want)
+	}
+}
+
+func TestRemoveDownloadLogsInWhenAsked(t *testing.T) {
+	f := &fakeQbit{auth: true}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	c, _ := New(srv.URL, "admin", "secret", time.Second)
+	if err := c.RemoveDownload(ctx, "ab", false); err != nil {
+		t.Fatal(err)
+	}
+	if f.logins != 1 || len(f.deleted) != 1 {
+		t.Errorf("logins = %d, deleted = %q; want one login and one removal", f.logins, f.deleted)
+	}
+}
+
+func TestRemoveDownloadWithoutCredentialsNeedsALogin(t *testing.T) {
+	f := &fakeQbit{auth: true}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	c, _ := New(srv.URL, "", "", time.Second)
+	if err := c.RemoveDownload(ctx, "ab", false); !errors.Is(err, ErrLoginRequired) {
+		t.Errorf("err = %v, want ErrLoginRequired", err)
+	}
+}
+
+func TestRemoveDownloadRefusesAnIDThatIsNotAHash(t *testing.T) {
+	f := &fakeQbit{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	c, _ := New(srv.URL, "", "", time.Second)
+	// "all" would remove every torrent, and "|" separates several hashes.
+	for _, id := range []string{"", "all", "ab|cd", "AB", "ab cd", "ab\n"} {
+		if err := c.RemoveDownload(ctx, id, true); err == nil {
+			t.Errorf("RemoveDownload(%q) = nil, want refused", id)
+		}
+	}
+	if len(f.deleted) != 0 {
+		t.Errorf("requests sent: %q", f.deleted)
 	}
 }

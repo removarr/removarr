@@ -1,4 +1,4 @@
-// Package qbittorrent reads torrents from qBittorrent's Web API (v2).
+// Package qbittorrent reads torrents from qBittorrent's Web API (v2) and removes them.
 package qbittorrent
 
 import (
@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,8 +20,9 @@ import (
 )
 
 var (
-	_ providers.DownloadClient = (*Client)(nil)
-	_ providers.Tester         = (*Client)(nil)
+	_ providers.DownloadClient  = (*Client)(nil)
+	_ providers.DownloadRemover = (*Client)(nil)
+	_ providers.Tester          = (*Client)(nil)
 )
 
 var (
@@ -157,10 +159,42 @@ func (c *Client) firstTracker(ctx context.Context, hash string) string {
 	return ""
 }
 
-// get requests path and returns the response body. When qBittorrent answers 403 the client
-// logs in and tries once more.
+// get requests path with GET and returns the response body.
 func (c *Client) get(ctx context.Context, path string, q url.Values) ([]byte, error) {
-	body, status, err := c.once(ctx, path, q)
+	return c.request(ctx, http.MethodGet, path, q, nil)
+}
+
+// RemoveDownload removes one torrent, with its data when deleteData is set (spec 6.7). id must
+// be a hash as Downloads reports it: qBittorrent reads "all" as every torrent and "|" as a
+// separator, so anything else is refused before a request is sent.
+func (c *Client) RemoveDownload(ctx context.Context, id string, deleteData bool) error {
+	if !validHash(id) {
+		return errors.New("remove a torrent: the ID is not a torrent hash")
+	}
+	form := url.Values{"hashes": {id}, "deleteFiles": {strconv.FormatBool(deleteData)}}
+	if _, err := c.request(ctx, http.MethodPost, "/api/v2/torrents/delete", nil, form); err != nil {
+		return fmt.Errorf("remove a torrent: %w", err)
+	}
+	return nil
+}
+
+// validHash reports whether id is lower-case hexadecimal, as Downloads reports hashes.
+func validHash(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// request sends one request and returns the response body. A non-nil form is sent as the
+// body. When qBittorrent answers 403 the client logs in and tries once more.
+func (c *Client) request(ctx context.Context, method, path string, q, form url.Values) ([]byte, error) {
+	body, status, err := c.once(ctx, method, path, q, form)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +205,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values) ([]byte, er
 		if err := c.login(ctx); err != nil {
 			return nil, err
 		}
-		if body, status, err = c.once(ctx, path, q); err != nil {
+		if body, status, err = c.once(ctx, method, path, q, form); err != nil {
 			return nil, err
 		}
 	}
@@ -181,14 +215,21 @@ func (c *Client) get(ctx context.Context, path string, q url.Values) ([]byte, er
 	return body, nil
 }
 
-func (c *Client) once(ctx context.Context, path string, q url.Values) ([]byte, int, error) {
+func (c *Client) once(ctx context.Context, method, path string, q, form url.Values) ([]byte, int, error) {
 	u := c.baseURL + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	var payload io.Reader
+	if form != nil {
+		payload = strings.NewReader(form.Encode())
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, payload)
 	if err != nil {
 		return nil, 0, err
+	}
+	if form != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 	req.Header.Set("Referer", c.baseURL)
 	resp, err := c.http.Do(req)
