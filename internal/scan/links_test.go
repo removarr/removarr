@@ -120,3 +120,12 @@ func TestAssociatedNamesSourcesAndGrabsOnce(t *testing.T) {
 		t.Errorf("Associated in the other manager = %v, want none", got)
 	}
 }
+
+func TestAssociatedNamesTheSourceOfAFileNothingGrabbed(t *testing.T) {
+	l := links()
+	l.FileSource[10] = "src"
+	x := NewLinkIndex(ManagerFiles{Manager: ManagerMovies, Links: l, Files: []LibraryFile{{ID: 10, Size: 1, Items: []int{1}}}})
+	if got := x.Associated(ManagerMovies, []int{1}, []int{10}); !reflect.DeepEqual(got, []string{"src"}) {
+		t.Errorf("Associated = %v, want [src]", got)
+	}
+}
