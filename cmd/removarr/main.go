@@ -51,6 +51,9 @@ func run(log *slog.Logger) error {
 	}
 	defer st.Close()
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	cfg := config.NewService(env, st)
 	apps := &app.Apps{Config: cfg, Timeout: 60 * time.Second}
 	g := &gate.Gate{}
@@ -69,7 +72,7 @@ func run(log *slog.Logger) error {
 		Store: st,
 		Now:   time.Now,
 	}
-	exec := &executor.Service{Build: apps.Writers, Store: st, Gate: g, DryRun: env.DryRun, Now: time.Now}
+	exec := &executor.Service{Build: apps.Writers, Store: st, Gate: g, DryRun: env.DryRun, Now: time.Now, Stop: ctx.Done(), Log: log}
 	server := &api.Server{Config: cfg, Store: st, Scanner: scans, Apps: apps, Planner: plans, Executor: exec, Log: log}
 
 	httpServer := &http.Server{
@@ -77,23 +80,32 @@ func run(log *slog.Logger) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", env.Port))
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
 	log.Info("removarr listening", "port", env.Port, "configDir", configDir, "dryRun", env.DryRun, "allowedHosts", env.AllowedHosts)
-	return serve(ctx, httpServer, ln, 10*time.Second)
+	err = serve(ctx, httpServer, ln, 10*time.Second)
+	// An execution goes on after its request (spec 6.11): let it finish its item and record
+	// it before the database closes. stop also covers serving that failed on its own.
+	stop()
+	if !exec.Wait(executionGrace) {
+		log.Error("an execution was still running when removarr stopped: the item it was running may be missing from the history")
+	}
+	return err
 }
+
+// executionGrace is how long removarr waits, when stopping, for a running execution to
+// finish its item (spec 6.11, stopping removarr).
+const executionGrace = 2 * time.Minute
 
 // serve serves srv on ln until ctx is done, then shuts the server down, giving in-flight
 // requests up to grace to finish. It returns only after both Shutdown and Serve have
-// returned, so the caller can close the database right after it returns without cutting
-// off a request that is still using it. It returns nil after a clean drain, an error
-// wrapping the Shutdown error if the grace period ran out, or the serving error if serving
-// stopped on its own. It never returns http.ErrServerClosed.
+// returned. That does not make closing the database safe: once grace runs out a request may
+// still be running, and an execution goes on after its request anyway, so the caller waits
+// for the executor first. It returns nil after a clean drain, an error wrapping the Shutdown
+// error if the grace period ran out, or the serving error if serving stopped on its own. It
+// never returns http.ErrServerClosed.
 func serve(ctx context.Context, srv *http.Server, ln net.Listener, grace time.Duration) error {
 	stopped := make(chan struct{})
 	defer close(stopped)

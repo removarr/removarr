@@ -317,6 +317,7 @@ Decided from the principles in section 2 while building stage 2d.
 - **History.** Each item is recorded as soon as it finishes, so an execution that is cut off keeps what it did: the time, the plan, whether it was a dry run, its rows with their sizes, its size, its outcome (done, failed, or dry run), and every step with its result (done, failed with the error, skipped, already gone, or dry run). A torrent step records whether its data was kept. Rows the plan skipped are not recorded: nothing was done to them.
 - **Stored lists** (7.4, step 5). After each item, unless it was a dry run, removarr removes from the latest stored scan each row whose media manager steps all succeeded, a torrent row whose torrent was removed or was already gone, and the torrent-list row of every torrent the item removed. A row whose steps did not all succeed stays, and the next plan for it reads the apps again (6.10).
 - **To the end.** An execution runs to its end even when the user's browser goes away. The request answers with what was recorded.
+- **Stopping removarr.** When removarr is stopped during an execution, it starts no further item, waits up to two minutes for the item it is running to finish and be recorded, and then stops. Items that did not start are not recorded and stay in the lists: nothing was done to them.
 - **A media manager that no longer knows the item** answers an error, and the item fails: removarr does not guess that it was removed some other way. Its torrents stay, and the next scan shows them (6.8, rule 4).
 
 ## 7. Architecture

@@ -1,9 +1,12 @@
 package executor
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,6 +191,107 @@ func TestExecuteStopsWhenAnItemCannotBeRecorded(t *testing.T) {
 	}
 	if contains(a.log, "remove movie 2 exclusion=false") {
 		t.Errorf("calls = %q: nothing may be deleted after a record failed", a.log)
+	}
+}
+
+// stopping is an app that stops removarr while the first item runs.
+type stopping struct {
+	*apps
+	stop chan struct{}
+}
+
+func (s *stopping) RemoveMovie(ctx context.Context, id int, excl bool) error {
+	if id == 1 {
+		close(s.stop)
+	}
+	return s.apps.RemoveMovie(ctx, id, excl)
+}
+
+func TestAStoppedExecutionFinishesItsItemAndStartsNoOther(t *testing.T) {
+	a := newApps(t)
+	s := &stopping{apps: a, stop: make(chan struct{})}
+	st := &fakeStore{plan: domain.Plan{ID: "p1", Items: []domain.PlanItem{movieItem(1, "tmdb:1", 0), movieItem(2, "tmdb:2", 0)}}}
+	svc := newService(a, st)
+	svc.Stop = s.stop
+	svc.Build = func(context.Context) (Providers, error) {
+		p := a.providers()
+		p.Movies = s
+		return p, nil
+	}
+	res, err := svc.Execute(ctx, "p1")
+	if !errors.Is(err, ErrStopping) {
+		t.Errorf("err = %v, want ErrStopping", err)
+	}
+	if len(st.recorded) != 1 || len(res.Actions) != 1 || res.Actions[0].Outcome != domain.OutcomeDone {
+		t.Errorf("recorded %d, actions %+v; want the first item only, done", len(st.recorded), res.Actions)
+	}
+	if contains(a.log, "remove movie 2 exclusion=false") {
+		t.Errorf("calls = %q: the second item started after the stop", a.log)
+	}
+}
+
+// blocking is an app whose removal waits until release is closed.
+type blocking struct {
+	*apps
+	started, release chan struct{}
+}
+
+func (b *blocking) RemoveMovie(ctx context.Context, id int, excl bool) error {
+	close(b.started)
+	<-b.release
+	return b.apps.RemoveMovie(ctx, id, excl)
+}
+
+func TestWaitReturnsOnceTheRunningExecutionFinishes(t *testing.T) {
+	a := newApps(t)
+	b := &blocking{apps: a, started: make(chan struct{}), release: make(chan struct{})}
+	st := &fakeStore{plan: domain.Plan{ID: "p1", Items: []domain.PlanItem{movieItem(1, "tmdb:1", 0)}}}
+	svc := newService(a, st)
+	svc.Build = func(context.Context) (Providers, error) {
+		p := a.providers()
+		p.Movies = b
+		return p, nil
+	}
+	if !svc.Wait(time.Millisecond) {
+		t.Error("Wait = false with nothing running")
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.Execute(ctx, "p1")
+		done <- err
+	}()
+	<-b.started
+	if svc.Wait(20 * time.Millisecond) {
+		t.Error("Wait = true while the execution still runs")
+	}
+	close(b.release)
+	if !svc.Wait(5 * time.Second) {
+		t.Fatal("Wait = false after the execution finished")
+	}
+	if err := <-done; err != nil || len(st.recorded) != 1 {
+		t.Errorf("err = %v, recorded %d; want the item recorded before Wait returned", err, len(st.recorded))
+	}
+}
+
+func TestAnItemThatCannotBeRecordedIsLogged(t *testing.T) {
+	a := newApps(t, dl("h1", "/dl/one"))
+	var buf bytes.Buffer
+	it := movieItem(7, "tmdb:1", 0, torrent("h1"))
+	it.Rows[0].Row.Title = "A Private Title"
+	st := &fakeStore{failAt: 1, plan: domain.Plan{ID: "p1", Items: []domain.PlanItem{it}}}
+	svc := newService(a, st)
+	svc.Log = slog.New(slog.NewTextHandler(&buf, nil))
+	if _, err := svc.Execute(ctx, "p1"); err == nil {
+		t.Fatal("want an error")
+	}
+	out := buf.String()
+	for _, want := range []string{"level=ERROR", "p1", "outcome=done", "movies/tmdb:1", "remove-movie item=7: done", "torrent h1 keepData=false: done"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log %q lacks %q", out, want)
+		}
+	}
+	if strings.Contains(out, "A Private Title") {
+		t.Errorf("log %q names a title", out)
 	}
 }
 
