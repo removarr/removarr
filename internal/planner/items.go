@@ -43,6 +43,11 @@ func (m *maker) addGroup(id rowID, c domain.Candidate) {
 			m.skip(id, ReasonNoLonger)
 			return
 		}
+		if (o.List != c.List || o.Key != c.Key) && m.latest[rowID{o.List, o.Key}].Waiting {
+			// The user never saw it listed; add has checked the selected row itself.
+			m.skip(id, fmt.Sprintf("It is tied to %q, which waited in the latest scan. Scan again.", o.Title))
+			return
+		}
 		// Holds.Reason has checked this already; an ignored row is never deleted with others.
 		if m.in.Ignores.Hides(o.List, o.Key) {
 			m.skip(id, fmt.Sprintf("It is tied to %q, which is ignored.", o.Title))

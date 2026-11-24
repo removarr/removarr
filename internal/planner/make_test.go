@@ -169,3 +169,51 @@ func TestMakeSkipsARowThatWaitedInTheLatestScan(t *testing.T) {
 		t.Errorf("tmdb:2: reason = %q, want %q", got["tmdb:2"], ReasonNotInScan)
 	}
 }
+
+func TestMakeSkipsARowTiedToARowThatWaitedInTheLatestScan(t *testing.T) {
+	f := world()
+	// Movie 2's file comes from m2, which is in a queue: movie 2 waits, movie 1 is listed.
+	f.Downloads.Value = append(f.Downloads.Value, domain.Download{ID: "m2", Name: "Two.Torrent", Size: 2000, ContentPath: "/dl/two"})
+	f.Movies.Value.Links.FileSource[20] = "m2"
+	f.Movies.Value.Links.Queue["m2"] = true
+	latest := scanned(rules(), f)
+	// Since the scan, m2 left the queue and movie 2's file comes from m1: the movies are tied.
+	f.Movies.Value.Links.Queue["m2"] = false
+	f.Movies.Value.Links.FileSource[20] = "m1"
+	items, skipped := plan(rules(), f, latest, nil, movieOne, movieTwo)
+	if len(items) != 0 {
+		t.Fatalf("items = %+v, want none", items)
+	}
+	got := skips(skipped)
+	if want := `It is tied to "Two", which waited in the latest scan. Scan again.`; got["tmdb:1"] != want {
+		t.Errorf("tmdb:1: reason = %q, want %q", got["tmdb:1"], want)
+	}
+	if got["tmdb:2"] != ReasonWaitedInScan {
+		t.Errorf("tmdb:2: reason = %q, want %q", got["tmdb:2"], ReasonWaitedInScan)
+	}
+}
+
+func TestMakeDoesNotAddARowThatWaitedInTheLatestScanToAnItem(t *testing.T) {
+	f := world()
+	// Movie 1's torrent m1 is in a queue: movie 1 waits. Movie 2 is listed with m2.
+	f.Downloads.Value = append(f.Downloads.Value, domain.Download{ID: "m2", Name: "Two.Torrent", Size: 2000, ContentPath: "/dl/two"})
+	f.Movies.Value.Links.FileSource[20] = "m2"
+	f.Movies.Value.Links.Queue["m1"] = true
+	latest := scanned(rules(), f)
+	// Since the scan, m1 left the queue and history no longer names it; movie 1's file comes
+	// from m2: the movies are tied.
+	f.Movies.Value.Links.Queue["m1"] = false
+	delete(f.Movies.Value.Links.Grabbed, "m1")
+	f.Movies.Value.Links.FileSource[10] = "m2"
+	items, skipped := plan(rules(), f, latest, nil, movieOne, movieTwo)
+	if len(items) != 0 {
+		t.Fatalf("items = %+v, want none", items)
+	}
+	got := skips(skipped)
+	if got["tmdb:1"] != ReasonWaitedInScan {
+		t.Errorf("tmdb:1: reason = %q, want %q", got["tmdb:1"], ReasonWaitedInScan)
+	}
+	if want := `It is tied to "One", which waited in the latest scan. Scan again.`; got["tmdb:2"] != want {
+		t.Errorf("tmdb:2: reason = %q, want %q", got["tmdb:2"], want)
+	}
+}
