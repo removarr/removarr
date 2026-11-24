@@ -4,10 +4,16 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/removarr/removarr/internal/app"
+	"github.com/removarr/removarr/internal/config"
+	"github.com/removarr/removarr/internal/store"
 )
 
 func listen(t *testing.T) net.Listener {
@@ -118,6 +124,30 @@ func TestServeReportsAnUnfinishedDrain(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("serve did not return after the grace period")
+	}
+}
+
+func TestTheJobsShareOneGateAndTheExecutorGetsTheDryRunSetting(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "removarr.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	stop := make(chan struct{})
+	for _, dry := range []bool{true, false} {
+		env := config.Env{DryRun: dry}
+		cfg := config.NewService(env, st)
+		j := newJobs(env, cfg, &app.Apps{Config: cfg}, st, log, stop)
+		if j.exec.DryRun != dry {
+			t.Errorf("DryRun %v: the executor got %v", dry, j.exec.DryRun)
+		}
+		if j.scans.Gate == nil || j.scans.Gate != j.plans.Gate || j.plans.Gate != j.exec.Gate {
+			t.Errorf("gates %p %p %p, want one shared gate", j.scans.Gate, j.plans.Gate, j.exec.Gate)
+		}
+		if j.exec.Stop != (<-chan struct{})(stop) || j.exec.Log != log || j.scans.Log != log {
+			t.Error("the executor must get the stop signal and the log")
+		}
 	}
 }
 

@@ -56,24 +56,8 @@ func run(log *slog.Logger) error {
 
 	cfg := config.NewService(env, st)
 	apps := &app.Apps{Config: cfg, Timeout: 60 * time.Second}
-	g := &gate.Gate{}
-	scans := &scanner.Service{
-		Gate:  g,
-		Build: apps.Providers,
-		Rules: cfg.Rules,
-		Store: st,
-		Now:   time.Now,
-		Log:   log,
-	}
-	plans := &planner.Service{
-		Gate:  g,
-		Build: apps.Providers,
-		Rules: cfg.Rules,
-		Store: st,
-		Now:   time.Now,
-	}
-	exec := &executor.Service{Build: apps.Writers, Store: st, Gate: g, DryRun: env.DryRun, Now: time.Now, Stop: ctx.Done(), Log: log}
-	server := &api.Server{Config: cfg, Store: st, Scanner: scans, Apps: apps, Planner: plans, Executor: exec, Log: log}
+	j := newJobs(env, cfg, apps, st, log, ctx.Done())
+	server := &api.Server{Config: cfg, Store: st, Scanner: j.scans, Apps: apps, Planner: j.plans, Executor: j.exec, Log: log}
 
 	httpServer := &http.Server{
 		Handler:           server.Handler(),
@@ -89,10 +73,29 @@ func run(log *slog.Logger) error {
 	// An execution goes on after its request (spec 6.11): let it finish its item and record
 	// it before the database closes. stop also covers serving that failed on its own.
 	stop()
-	if !exec.Wait(executionGrace) {
+	if !j.exec.Wait(executionGrace) {
 		log.Error("an execution was still running when removarr stopped: the item it was running may be missing from the history")
 	}
 	return err
+}
+
+// jobs are the services that read or change the apps.
+type jobs struct {
+	scans *scanner.Service
+	plans *planner.Service
+	exec  *executor.Service
+}
+
+// newJobs builds the scanner, the planner and the executor around one gate, so a scan, a plan
+// and an execution never run at the same time. The executor runs as a dry run when env says
+// so, and starts no further item once stop is closed.
+func newJobs(env config.Env, cfg *config.Service, apps *app.Apps, st *store.Store, log *slog.Logger, stop <-chan struct{}) jobs {
+	g := &gate.Gate{}
+	return jobs{
+		scans: &scanner.Service{Gate: g, Build: apps.Providers, Rules: cfg.Rules, Store: st, Now: time.Now, Log: log},
+		plans: &planner.Service{Gate: g, Build: apps.Providers, Rules: cfg.Rules, Store: st, Now: time.Now},
+		exec:  &executor.Service{Gate: g, Build: apps.Writers, Store: st, DryRun: env.DryRun, Now: time.Now, Stop: stop, Log: log},
+	}
 }
 
 // executionGrace is how long removarr waits, when stopping, for a running execution to
