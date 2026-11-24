@@ -63,7 +63,7 @@ func TestMakeDeletesTheFilesOfARunningSeries(t *testing.T) {
 	running(&f, true)
 	item := onlyItem(t)(same(t, rules(), f, nil, theShow))
 	want := []domain.ManagerStep{
-		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{11, 12}},
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
 		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
 		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
 	}
@@ -93,10 +93,38 @@ func TestMakeDeletesTheFilesOfASeasonRow(t *testing.T) {
 	running(&f, true)
 	// Season 2 gets a file that is not watched, so season 1 is a row of its own.
 	s := &f.Series.Value.Series[0]
-	s.Episodes[2].File = mfile(21, 500)
+	s.Episodes[2].File = mfile(121, 500)
 	item := onlyItem(t)(same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1")))
 	want := []domain.ManagerStep{
-		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{11, 12}},
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
+	}
+	if !reflect.DeepEqual(item.Steps, want) {
+		t.Errorf("steps = %+v, want %+v", item.Steps, want)
+	}
+}
+
+func TestMakeUnmonitorsOnlyTheFinishedSeasonsOfTheRow(t *testing.T) {
+	r := rules()
+	r.SeriesUnit = domain.UnitSeason
+	f := world()
+	s := &f.Series.Value.Series[0]
+	s.Ended = false
+	for i := range s.Episodes {
+		s.Episodes[i].AirDate = at(now.Add(-48 * time.Hour))
+	}
+	// Season 2 has finished airing too, because season 3 exists, but its episode is not
+	// watched: it is no row, and the plan for season 1 must leave it monitored.
+	s.Episodes = append(s.Episodes,
+		domain.Episode{ID: 21, Season: 2, Number: 1, AirDate: at(now.Add(-24 * time.Hour)), File: mfile(121, 500)},
+		domain.Episode{ID: 31, Season: 3, Number: 1, AirDate: at(now.Add(48 * time.Hour))})
+	if !scan.SeasonFinished(*s, 2, now) {
+		t.Fatal("season 2 has not finished airing; the test needs it to have")
+	}
+	item := onlyItem(t)(same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1")))
+	want := []domain.ManagerStep{
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
 		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
 		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
 	}
@@ -111,12 +139,12 @@ func TestMakeDeletesAFileSharedByTwoSeasonRowsOnce(t *testing.T) {
 	f := world()
 	s := &f.Series.Value.Series[0]
 	s.Ended = false
-	// Episode 12 (season 1) and episode 21 (season 2) share file 30; season 3 is not watched,
+	// Episode 12 (season 1) and episode 21 (season 2) share file 130; season 3 is not watched,
 	// so the seasons are not merged into one series row.
-	s.Episodes[1].File = mfile(30, 500)
+	s.Episodes[1].File = mfile(130, 500)
 	s.Episodes = append(s.Episodes,
-		domain.Episode{ID: 21, Season: 2, Number: 1, File: mfile(30, 500)},
-		domain.Episode{ID: 31, Season: 3, Number: 1, File: mfile(31, 500)})
+		domain.Episode{ID: 21, Season: 2, Number: 1, File: mfile(130, 500)},
+		domain.Episode{ID: 31, Season: 3, Number: 1, File: mfile(131, 500)})
 	f.Series.Value.Links = domain.Links{Grabbed: map[string][]int{}, FileSource: map[int]string{}, Queue: map[string]bool{}}
 	f.Library.Value.Episodes = append(f.Library.Value.Episodes, domain.ServerEpisode{SeriesID: "ss1", Season: 2, Episode: 1, States: played()})
 	items, skipped := same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1"))
@@ -132,8 +160,8 @@ func TestMakeDeletesAFileSharedByTwoSeasonRowsOnce(t *testing.T) {
 			}
 		}
 	}
-	if !reflect.DeepEqual(deleted, map[int]int{11: 1, 30: 1}) {
-		t.Errorf("files deleted = %v, want 11 and 30 once each", deleted)
+	if !reflect.DeepEqual(deleted, map[int]int{111: 1, 130: 1}) {
+		t.Errorf("files deleted = %v, want 111 and 130 once each", deleted)
 	}
 }
 
@@ -185,6 +213,41 @@ func TestMakeSkipsAnItemThatWouldRemoveATorrentTheScanDidNotShow(t *testing.T) {
 	}
 	if got := skips(skipped)["tmdb:1"]; !strings.Contains(got, `"One.Again"`) || !strings.Contains(got, "Scan again") {
 		t.Errorf("reason = %q, want it to name One.Again and ask for a scan", got)
+	}
+}
+
+func TestMakeSkipsAnItemThatWouldRemoveATorrentTheScanNamedOnlyForAnotherRow(t *testing.T) {
+	f := world()
+	// The scan named m2 for movie 2 alone: history records it as grabbed for movie 2, and it
+	// backs no file.
+	f.Movies.Value.Links.Grabbed["m2"] = []int{2}
+	f.Downloads.Value = append(f.Downloads.Value, domain.Download{ID: "m2", Name: "Two.Torrent"})
+	latest := scanned(rules(), f)
+	// Since the scan, history names m2 for movie 1 as well. The movies are not tied: m2
+	// backs no file.
+	f.Movies.Value.Links.Grabbed["m2"] = []int{1, 2}
+	items, skipped := plan(rules(), f, latest, nil, movieOne)
+	if len(items) != 0 {
+		t.Fatalf("items = %+v, want none", items)
+	}
+	if got := skips(skipped)["tmdb:1"]; !strings.Contains(got, `"Two.Torrent"`) || !strings.Contains(got, "Scan again") {
+		t.Errorf("reason = %q, want it to name Two.Torrent and ask for a scan", got)
+	}
+}
+
+func TestMakeSkipsAnItemWhoseTiedRowWouldRemoveATorrentTheScanDidNotShow(t *testing.T) {
+	f := world()
+	f.Movies.Value.Links.FileSource[20] = "m1" // m1 backs both movies: they are tied
+	latest := scanned(rules(), f)
+	// Since the scan, history names a second torrent for movie 2, the row that is not selected.
+	f.Movies.Value.Links.Grabbed["m3"] = []int{2}
+	f.Downloads.Value = append(f.Downloads.Value, domain.Download{ID: "m3", Name: "Two.Again"})
+	items, skipped := plan(rules(), f, latest, nil, movieOne)
+	if len(items) != 0 {
+		t.Fatalf("items = %+v, want none", items)
+	}
+	if got := skips(skipped)["tmdb:1"]; !strings.Contains(got, `"Two.Again"`) || !strings.Contains(got, "Scan again") {
+		t.Errorf("reason = %q, want it to name Two.Again and ask for a scan", got)
 	}
 }
 

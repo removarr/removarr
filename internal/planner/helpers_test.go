@@ -22,7 +22,7 @@ func at(t time.Time) *time.Time { return &t }
 // world is a small library that tests change. Everything is watched by user "a":
 //   - movie 1 "One" (tmdb:1), file 10, grabbed as and imported from torrent "m1";
 //   - movie 2 "Two" (tmdb:2), file 20, from no torrent;
-//   - the ended series 1 "Show" (tvdb:100): season 1, episodes 11 and 12 in files 11 and 12,
+//   - the ended series 1 "Show" (tvdb:100): season 1, episodes 11 and 12 in files 111 and 112,
 //     both from the pack "p1";
 //   - the torrent "orphan", which no media manager knows.
 func world() scanner.Fetched {
@@ -48,11 +48,11 @@ func world() scanner.Fetched {
 		Series: []domain.Series{{
 			ID: 1, Title: "Show", Ended: true, IDs: domain.ExternalIDs{TVDB: "100"},
 			Episodes: []domain.Episode{
-				{ID: 11, Season: 1, Number: 1, File: mfile(11, 500)},
-				{ID: 12, Season: 1, Number: 2, File: mfile(12, 500)},
+				{ID: 11, Season: 1, Number: 1, File: mfile(111, 500)},
+				{ID: 12, Season: 1, Number: 2, File: mfile(112, 500)},
 			},
 		}},
-		Links: domain.Links{Grabbed: map[string][]int{"p1": {11, 12}}, FileSource: map[int]string{11: "p1", 12: "p1"}, Queue: map[string]bool{}},
+		Links: domain.Links{Grabbed: map[string][]int{"p1": {11, 12}}, FileSource: map[int]string{111: "p1", 112: "p1"}, Queue: map[string]bool{}},
 	}
 	downloads := []domain.Download{
 		{ID: "m1", Name: "One.Torrent", Size: 1000, ContentPath: "/dl/one"},
