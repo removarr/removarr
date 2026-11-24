@@ -153,6 +153,36 @@ func TestThePlansKeepDataHoldsWhenNothingSharesItNow(t *testing.T) {
 	}
 }
 
+func TestADownloadWithAnUnknownContentPathKeepsTheData(t *testing.T) {
+	// h2 stays in the client, and nobody knows where its data is: h1's data may be shared.
+	a := newApps(t, dl("h1", "/dl/one"), dl("h2", ""))
+	act, _ := newRun(a.providers(), false).item(ctx, movieItem(7, "tmdb:1", 0, torrent("h1")))
+	if !contains(a.log, "remove torrent h1 data=false") || !act.Steps[1].KeepData {
+		t.Errorf("calls = %q, record %+v: another path unknown, want the data kept", a.log, act.Steps[1])
+	}
+
+	// h1's own content path is unknown.
+	a = newApps(t, dl("h1", ""))
+	act, _ = newRun(a.providers(), false).item(ctx, movieItem(7, "tmdb:1", 0, torrent("h1")))
+	if !contains(a.log, "remove torrent h1 data=false") || !act.Steps[1].KeepData {
+		t.Errorf("calls = %q, record %+v: own path unknown, want the data kept", a.log, act.Steps[1])
+	}
+}
+
+func TestATorrentSkippedAfterAManagerFailureKeepsDataForALaterItem(t *testing.T) {
+	a := newApps(t, dl("h1", "/dl/one"), dl("h2", "/dl/one"))
+	a.fail["remove movie 1 exclusion=false"] = errors.New("unexpected status 500")
+	r := newRun(a.providers(), false)
+	first, _ := r.item(ctx, movieItem(1, "tmdb:1", 0, torrent("h1")))
+	second, _ := r.item(ctx, movieItem(2, "tmdb:2", 0, torrent("h2")))
+	if first.Steps[1].Result != domain.ResultSkipped {
+		t.Fatalf("first item = %+v, want its torrent skipped", first)
+	}
+	if !contains(a.log, "remove torrent h2 data=false") || !second.Steps[1].KeepData {
+		t.Errorf("calls = %q, record %+v: h1 stays, so h2 must keep the data", a.log, second.Steps[1])
+	}
+}
+
 func TestADryRunSendsNothingAndDecidesAsARealRun(t *testing.T) {
 	a := newApps(t, dl("h1", "/dl/one"), dl("h2", "/dl/one"))
 	a.noWrites = true
