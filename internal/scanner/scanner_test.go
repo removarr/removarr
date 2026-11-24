@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/gate"
 )
 
 var (
@@ -298,11 +299,11 @@ func TestOnlyOneScanAtATime(t *testing.T) {
 	if status := svc.Status(); !status.Running || status.Phase == "" || status.StartedAt == nil {
 		t.Errorf("status during a scan = %+v", status)
 	}
-	if err := svc.Start(); !errors.Is(err, ErrRunning) {
-		t.Errorf("second Start = %v, want ErrRunning", err)
+	if err := svc.Start(); !errors.Is(err, gate.ErrBusy) {
+		t.Errorf("second Start = %v, want ErrBusy", err)
 	}
-	if err := svc.Run(ctx); !errors.Is(err, ErrRunning) {
-		t.Errorf("Run during a scan = %v, want ErrRunning", err)
+	if err := svc.Run(ctx); !errors.Is(err, gate.ErrBusy) {
+		t.Errorf("Run during a scan = %v, want ErrBusy", err)
 	}
 
 	close(dl.release)
@@ -861,4 +862,52 @@ func TestRunFailsWhenIgnoresCannotBeRead(t *testing.T) {
 	if st.begun != 0 || st.finished != 0 {
 		t.Errorf("scan recorded %d starts and %d finishes, want none", st.begun, st.finished)
 	}
+}
+
+func TestAScanIsRefusedWhileThePlannerHoldsTheGate(t *testing.T) {
+	p, _ := world()
+	svc := service(p, withUser(), &fakeStore{})
+	svc.Gate = &gate.Gate{}
+	release, err := svc.Gate.Enter(gate.Plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var busy *gate.BusyError
+	if err := svc.Start(); !errors.As(err, &busy) || busy.Job != gate.Plan {
+		t.Fatalf("Start = %v, want refused while a plan is built", err)
+	}
+	if svc.Status().Running {
+		t.Error("a refused scan must not show as running")
+	}
+	release()
+	if err := svc.Run(ctx); err != nil {
+		t.Errorf("after the plan: %v", err)
+	}
+}
+
+// panicky is a download client that panics while it is read.
+type panicky struct{ fakeDownloads }
+
+func (*panicky) Downloads(context.Context) ([]domain.Download, error) { panic("boom") }
+
+func TestAPanickingScanFreesTheGateAndReportsIt(t *testing.T) {
+	p, _ := world()
+	p.Downloads = &panicky{}
+	svc := service(p, withUser(), &fakeStore{})
+	svc.Gate = &gate.Gate{}
+	if err := svc.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, svc)
+	if s := svc.Status(); s.Running || !strings.Contains(s.LastError, "stopped unexpectedly") {
+		t.Errorf("status = %+v, want idle with the panic reported", s)
+	}
+	if err := svc.Run(ctx); err == nil || !strings.Contains(err.Error(), "stopped unexpectedly") {
+		t.Errorf("Run = %v, want the panic as an error", err)
+	}
+	release, err := svc.Gate.Enter(gate.Execute)
+	if err != nil {
+		t.Fatalf("the gate is still held after a panic: %v", err)
+	}
+	release()
 }

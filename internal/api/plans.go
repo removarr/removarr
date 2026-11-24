@@ -20,6 +20,9 @@ func (s *Server) buildPlan(w http.ResponseWriter, r *http.Request) {
 		refs = append(refs, domain.RowRef{List: row.List, Key: row.Key})
 	}
 	plan, err := s.Planner.Plan(r.Context(), refs)
+	if busy(w, err) {
+		return
+	}
 	if err != nil {
 		s.fail(w, err)
 		return

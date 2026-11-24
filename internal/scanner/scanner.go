@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/gate"
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/scan"
 )
@@ -29,9 +30,6 @@ type Store interface {
 	Ignores(ctx context.Context) ([]domain.Ignore, error)
 	FinishScan(ctx context.Context, id int64, finishedAt time.Time, summary domain.ScanSummary, candidates []domain.Candidate) error
 }
-
-// ErrRunning is returned while a scan is in progress.
-var ErrRunning = errors.New("a scan is already running")
 
 const defaultTimeout = 30 * time.Minute
 
@@ -52,11 +50,18 @@ type Service struct {
 	Log     *slog.Logger
 	Timeout time.Duration // limit for one background scan; 0 means 30 minutes
 
+	// Gate is shared with the planner and the executor (spec 6.11). Nil gives the scanner a
+	// gate of its own.
+	Gate *gate.Gate
+
+	own     gate.Gate
+	release func() // frees the gate when the running scan finishes
+
 	mu     sync.Mutex
 	status Status
 }
 
-// Start begins a scan in the background. It returns ErrRunning when one is in progress.
+// Start begins a scan in the background. It returns a *gate.BusyError when the gate is held.
 func (s *Service) Start() error {
 	if err := s.begin(); err != nil {
 		return err
@@ -68,17 +73,17 @@ func (s *Service) Start() error {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		s.finish(s.run(ctx))
+		s.finish(s.runSafely(ctx))
 	}()
 	return nil
 }
 
-// Run performs a scan and waits for it. It returns ErrRunning when one is in progress.
+// Run performs a scan and waits for it. It returns a *gate.BusyError when the gate is held.
 func (s *Service) Run(ctx context.Context) error {
 	if err := s.begin(); err != nil {
 		return err
 	}
-	err := s.run(ctx)
+	err := s.runSafely(ctx)
 	s.finish(err)
 	return err
 }
@@ -90,25 +95,50 @@ func (s *Service) Status() Status {
 	return s.status
 }
 
+func (s *Service) gate() *gate.Gate {
+	if s.Gate != nil {
+		return s.Gate
+	}
+	return &s.own
+}
+
 func (s *Service) begin() error {
+	release, err := s.gate().Enter(gate.Scan)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.status.Running {
-		return ErrRunning
-	}
 	started := s.Now()
 	s.status = Status{Running: true, Phase: "starting", StartedAt: &started}
+	s.release = release
 	return nil
 }
 
 func (s *Service) finish(err error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.status = Status{}
 	if err != nil {
 		s.status.LastError = err.Error()
 		s.Log.Error("scan failed", "error", err)
 	}
+	release := s.release
+	s.release = nil
+	s.mu.Unlock()
+	if release != nil {
+		release()
+	}
+}
+
+// runSafely runs a scan and turns a panic into an error, so that the status and the gate
+// are released whatever happens.
+func (s *Service) runSafely(ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("the scan stopped unexpectedly: %v", r)
+		}
+	}()
+	return s.run(ctx)
 }
 
 func (s *Service) setPhase(phase string) {

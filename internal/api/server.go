@@ -19,6 +19,7 @@ import (
 
 	"github.com/removarr/removarr/internal/config"
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/gate"
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
@@ -194,4 +195,15 @@ func (s *Server) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+// busy answers 409 with the job that holds the gate (spec 6.11). It reports whether err was
+// such a refusal.
+func busy(w http.ResponseWriter, err error) bool {
+	var b *gate.BusyError
+	if !errors.As(err, &b) {
+		return false
+	}
+	writeError(w, http.StatusConflict, b.Job)
+	return true
 }

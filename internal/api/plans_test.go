@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/gate"
 )
 
 func TestBuildPlanPassesTheRowsAndReturnsThePlan(t *testing.T) {
@@ -56,5 +57,14 @@ func TestBuildPlanFailureIsAServerError(t *testing.T) {
 	h.planner.err = errors.New("disk full")
 	if rec := h.do(http.MethodPost, "/api/plans", ignoreBody("movies/tmdb:1")); rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+func TestBuildPlanWhileBusyIsAConflict(t *testing.T) {
+	h := newHarness(t, nil)
+	h.planner.err = &gate.BusyError{Job: gate.Scan}
+	rec := h.do(http.MethodPost, "/api/plans", ignoreBody("movies/tmdb:1"))
+	if rec.Code != http.StatusConflict || decode[errorBody](t, rec).Error != gate.Scan {
+		t.Errorf("status = %d %s, want 409 naming the scan", rec.Code, rec.Body)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/removarr/removarr/internal/api"
 	"github.com/removarr/removarr/internal/app"
 	"github.com/removarr/removarr/internal/config"
+	"github.com/removarr/removarr/internal/gate"
 	"github.com/removarr/removarr/internal/planner"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
@@ -51,7 +52,9 @@ func run(log *slog.Logger) error {
 
 	cfg := config.NewService(env, st)
 	apps := &app.Apps{Config: cfg, Timeout: 60 * time.Second}
+	g := &gate.Gate{}
 	scans := &scanner.Service{
+		Gate:  g,
 		Build: apps.Providers,
 		Rules: cfg.Rules,
 		Store: st,
@@ -59,6 +62,7 @@ func run(log *slog.Logger) error {
 		Log:   log,
 	}
 	plans := &planner.Service{
+		Gate:  g,
 		Build: apps.Providers,
 		Rules: cfg.Rules,
 		Store: st,

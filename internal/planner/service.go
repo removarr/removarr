@@ -5,10 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/gate"
 	"github.com/removarr/removarr/internal/scan"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
@@ -28,15 +28,25 @@ type Service struct {
 	Now   func() time.Time
 	NewID func() (string, error) // nil means 16 random bytes in hex
 
-	mu sync.Mutex
+	// Gate is shared with the scanner and the executor (spec 6.11). Nil gives the planner a
+	// gate of its own.
+	Gate *gate.Gate
+	own  gate.Gate
 }
 
 // Plan builds the plan for the selected rows from live data, stores it with its expiry and
-// returns it (spec 6.8, 6.10). An app that does not answer skips the rows that need it; only
+// returns it (spec 6.8, 6.10). A plan is refused while a scan, another plan or an execution runs. An app that does not answer skips the rows that need it; only
 // a failure to load the settings, read the latest scan or save the plan is an error.
 func (s *Service) Plan(ctx context.Context, selected []domain.RowRef) (domain.Plan, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	g := s.Gate
+	if g == nil {
+		g = &s.own
+	}
+	release, err := g.Enter(gate.Plan)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	defer release()
 
 	rules, err := s.Rules(ctx)
 	if err != nil {

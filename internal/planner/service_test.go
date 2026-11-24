@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/gate"
 	"github.com/removarr/removarr/internal/scan"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
@@ -182,5 +183,20 @@ func TestPlanIDsAreRandom(t *testing.T) {
 	b, errB := randomID()
 	if errA != nil || errB != nil || len(a) != 32 || a == b {
 		t.Errorf("randomID = %q, %q (%v, %v); want two different 32-character IDs", a, b, errA, errB)
+	}
+}
+
+func TestPlanIsRefusedWhileAScanRuns(t *testing.T) {
+	f := world()
+	st := &fakeStore{latest: store.Latest{Rows: scanned(rules(), f)}}
+	svc := service(providersOf(f), st)
+	svc.Gate = &gate.Gate{}
+	release, _ := svc.Gate.Enter(gate.Scan)
+	defer release()
+	if _, err := svc.Plan(context.Background(), []domain.RowRef{sel(domain.ListMovies, "tmdb:603")}); !errors.Is(err, gate.ErrBusy) {
+		t.Fatalf("Plan = %v, want refused while a scan runs", err)
+	}
+	if len(st.saved) != 0 {
+		t.Error("no plan may be saved")
 	}
 }
