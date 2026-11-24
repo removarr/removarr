@@ -38,6 +38,11 @@ func (m *maker) addGroup(id rowID, c domain.Candidate) {
 		members = append(members, o)
 	}
 	for _, o := range members {
+		if _, ok := m.rows[rowID{o.List, o.Key}]; !ok {
+			// Without what Delete touches, the steps would name no item.
+			m.skip(id, ReasonNoLonger)
+			return
+		}
 		// Holds.Reason has checked this already; an ignored row is never deleted with others.
 		if m.in.Ignores.Hides(o.List, o.Key) {
 			m.skip(id, fmt.Sprintf("It is tied to %q, which is ignored.", o.Title))

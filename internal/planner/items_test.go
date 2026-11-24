@@ -8,6 +8,7 @@ import (
 
 	"github.com/removarr/removarr/internal/domain"
 	"github.com/removarr/removarr/internal/scan"
+	"github.com/removarr/removarr/internal/scanner"
 )
 
 // onlyItem checks that a plan has exactly one item and no skipped row, and returns the item.
@@ -274,6 +275,26 @@ func TestMakeSkipsAnItemWhenATorrentTheScanNamedWouldNowStay(t *testing.T) {
 	want := `It changed since the scan: the torrent "One.Torrent" that the scan showed would now stay. Scan again.`
 	if got := skips(skipped)["tmdb:1"]; got != want {
 		t.Errorf("reason = %q, want %q", got, want)
+	}
+}
+
+func TestMakeSkipsARowWhoseEvaluationHasNoRowToDelete(t *testing.T) {
+	f := world()
+	f.Movies.Value.Links.FileSource[20] = "m1" // m1 backs both movies: they are tied
+	eval := scanner.Evaluate(rules(), now, f)
+	var rows []scan.Row
+	for _, r := range eval.Rows {
+		if r.Candidate.Key != "tmdb:2" { // the tied row has a candidate, but nothing to delete
+			rows = append(rows, r)
+		}
+	}
+	eval.Rows = rows
+	items, skipped := Make(Input{
+		Rules: rules(), Now: now, Eval: eval, Ignores: scan.NewIgnoreSet(nil),
+		Latest: scanned(rules(), f), Selected: []domain.RowRef{movieOne},
+	})
+	if len(items) != 0 || skips(skipped)["tmdb:1"] != ReasonNoLonger {
+		t.Errorf("items = %+v, skipped = %+v, want tmdb:1 skipped as no longer qualifying", items, skipped)
 	}
 }
 
