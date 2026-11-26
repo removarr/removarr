@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { makeQueryClient } from "@/api/queryClient";
 import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -18,7 +19,8 @@ beforeEach(() => {
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = makeQueryClient();
+  queryClient.setDefaultOptions({ ...queryClient.getDefaultOptions(), queries: { retry: false } });
   render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

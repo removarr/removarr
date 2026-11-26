@@ -1,4 +1,4 @@
-import { Fragment, useId } from "react";
+import { Fragment, useEffect, useId } from "react";
 import { useScanFinishedRefresh, useStartScan, useStatus } from "@/api/queries";
 import type { ListKind, ListSummary } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,9 @@ export function Header() {
   useScanFinishedRefresh(status?.scan.running);
 
   const running = status?.scan.running ?? false;
+  // A refusal message is about the state it was shown in: drop it when that state changes.
+  const { reset } = start;
+  useEffect(() => reset(), [running, reset]);
   const last = status?.lastScan ?? null;
   const lists = last?.summary.lists ?? {};
   const shown = LISTS.filter(({ kind }) => lists[kind]);

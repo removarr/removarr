@@ -41,5 +41,8 @@ export function useStartScan() {
   return useMutation({
     mutationFn: () => api("/api/scans", { method: "POST", body: {} }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.status }),
+    // A refusal usually means a job runs: read the status once (not a retry of the start).
+    onError: () => qc.invalidateQueries({ queryKey: keys.status }),
+    // A refusal usually means a job runs: read the status once (not a retry of the start).
   });
 }

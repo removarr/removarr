@@ -118,6 +118,37 @@ describe("the header", () => {
     expect(m.count("POST /api/scans")).toBe(1);
   });
 
+  it("reads the status again once after a refused start, so the header learns what runs", async () => {
+    let running = false;
+    const m = mockApi({
+      "GET /api/status": () => ({ status: 200, body: status({ scan: { running, phase: "reading" } }) }),
+      "POST /api/scans": () => {
+        running = true;
+        return { status: 409, body: { error: "a scan is running" } };
+      },
+    });
+    renderWithProviders(<Header />);
+    await userEvent.click(await screen.findByRole("button", { name: "Scan" }));
+    expect(await screen.findByRole("button", { name: /Scanning/ })).toBeDisabled();
+    expect(m.count("GET /api/status")).toBe(2);
+    expect(m.count("POST /api/scans")).toBe(1);
+  });
+
+  it("clears the refusal message when the scan state changes", async () => {
+    let running = false;
+    mockApi({
+      "GET /api/status": () => ({ status: 200, body: status({ scan: { running, phase: "reading" } }) }),
+      "POST /api/scans": () => ({ status: 409, body: { error: "plan is being built" } }),
+    });
+    const { queryClient } = renderWithProviders(<Header />);
+    await userEvent.click(await screen.findByRole("button", { name: "Scan" }));
+    expect(await screen.findByText("plan is being built")).toBeInTheDocument();
+    running = true;
+    await queryClient.refetchQueries({ queryKey: ["status"] });
+    await screen.findByRole("button", { name: /Scanning/ });
+    expect(screen.queryByText("plan is being built")).not.toBeInTheDocument();
+  });
+
   it("disables the button and shows the phase while a scan runs", async () => {
     mockApi({
       "GET /api/status": () => ({ status: 200, body: status({ scan: { running: true, phase: "reading jellyfin" } }) }),

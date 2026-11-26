@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { makeQueryClient } from "@/api/queryClient";
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -8,9 +9,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 // renderWithProviders mounts the UI in a fresh query client (no retries, so a failure shows
 // at once) and a memory router. The client is returned so that a test can refetch queries.
 export function renderWithProviders(ui: ReactElement, opts: { route?: string } = {}) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  // The app's own client, so a test sees the app's defaults (a change is never retried).
+  // Only query retries are turned off, so that a failure shows at once.
+  const queryClient = makeQueryClient();
+  queryClient.setDefaultOptions({ ...queryClient.getDefaultOptions(), queries: { retry: false } });
   const router = createMemoryRouter([{ path: "*", element: ui }], { initialEntries: [opts.route ?? "/"] });
   const result = render(
     <QueryClientProvider client={queryClient}>
