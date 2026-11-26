@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router";
+import { Header } from "@/components/header/Header";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -17,8 +18,7 @@ export function Shell() {
       <header className="border-b">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3">
           <span className="text-lg font-semibold">removarr</span>
-          {/* The scan button, the summary and the free space go here (task 4). */}
-          <div className="flex flex-1 flex-wrap items-center justify-end gap-4" />
+          <Header />
         </div>
         <nav aria-label="Main" className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4">
           {LINKS.map(({ to, label }) => (

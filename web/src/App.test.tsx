@@ -1,11 +1,31 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { mockApi } from "@/test/render";
 import { routes } from "./App";
+
+// The shell's header reads the status.
+beforeEach(() => {
+  mockApi({
+    "GET /api/status": () => ({
+      status: 200,
+      body: { dryRun: false, connections: {}, scan: { running: false }, lastScan: null, stale: false },
+    }),
+  });
+});
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
+    </QueryClientProvider>,
+  );
   return router;
 }
 

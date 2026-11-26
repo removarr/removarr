@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, expect, vi } from "vitest";
+import { takeUnexpectedRequests } from "@/test/render";
 
 // jsdom has no matchMedia. The stub reports a wide screen, so the table layout is the
 // default; a test that needs the narrow layout replaces window.matchMedia itself.
@@ -21,4 +22,7 @@ Object.defineProperty(window, "matchMedia", {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  const missed = takeUnexpectedRequests();
+  expect(missed, "requests without a mock route").toEqual([]);
 });
