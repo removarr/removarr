@@ -9,6 +9,28 @@ const rows = (page: Page) => page.getByRole("checkbox", { name: /^Select (?!all 
 
 const nav = (page: Page, name: string) => page.getByRole("navigation", { name: "Main" }).getByRole("link", { name });
 
+// shownPanelLinks are the side panel's links a person can see. A closed panel is hidden from
+// the accessibility tree at once, so it is found by CSS; it is out of sight only once its
+// closing animation ended, which toHaveCount waits for.
+const shownPanelLinks = (page: Page) => page.locator('nav[aria-label="Main"] a:visible');
+
+// A link of the closed panel cannot take the focus.
+const panelLinkTakesFocus = (page: Page) =>
+  page.evaluate(`(() => {
+    const a = document.querySelector('nav[aria-label="Main"] a');
+    a.focus();
+    return document.activeElement === a;
+  })()`);
+
+// scanAtRightEnd checks that the Scan button is the right-most thing in the header, past only
+// the header's padding, and returns its box.
+async function scanAtRightEnd(page: Page) {
+  const header = (await page.locator("header").boundingBox())!;
+  const scan = (await page.getByRole("button", { name: "Scan", exact: true }).boundingBox())!;
+  expect(header.x + header.width - (scan.x + scan.width)).toBeLessThanOrEqual(24);
+  return scan;
+}
+
 test("scan, ignore, delete, history and settings", async ({ page }) => {
   await test.step("the start page is Movies, with no scan yet", async () => {
     await page.goto("/");
@@ -20,6 +42,11 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
   await test.step("a scan lists two movies and the orphan torrent", async () => {
     await page.getByRole("button", { name: "Scan", exact: true }).click();
     await expect(page.getByText(/^Last scan /)).toBeVisible();
+    // On a wide screen the scan's details sit between the name and the Scan button.
+    const scan = await scanAtRightEnd(page);
+    const last = (await page.getByText(/^Last scan /).boundingBox())!;
+    expect(last.x + last.width).toBeLessThanOrEqual(scan.x);
+    expect(last.y).toBeLessThan(scan.y + scan.height);
     await expect(rows(page)).toHaveCount(2);
     await expect(page.getByRole("checkbox", { name: "Select Fake Movie One" })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Select Fake Movie Two" })).toBeVisible();
@@ -131,6 +158,8 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
   await test.step("the side panel hides, and stays hidden after a reload", async () => {
     await page.getByRole("button", { name: "Hide menu" }).click();
     await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
+    await expect(shownPanelLinks(page)).toHaveCount(0);
+    expect(await panelLinkTakesFocus(page)).toBe(false);
     await page.reload();
     await expect(page.getByRole("heading", { level: 1, name: "Rules" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
@@ -139,17 +168,25 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
   });
 
   await test.step("on a narrow screen the menu is a drawer that closes when a page is chosen", async () => {
-    await page.setViewportSize({ width: 390, height: 800 });
+    await page.setViewportSize({ width: 390, height: 844 });
     const menu = page.getByRole("navigation", { name: "Main" });
     await expect(menu).toBeHidden();
+    await expect(shownPanelLinks(page)).toHaveCount(0);
     await page.getByRole("button", { name: "Show menu" }).click();
     await expect(menu).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
+    await expect(shownPanelLinks(page)).toHaveCount(0);
+    expect(await panelLinkTakesFocus(page)).toBe(false);
     await page.getByRole("button", { name: "Show menu" }).click();
     await nav(page, "Movies").click();
     await expect(page.getByRole("heading", { level: 1, name: "Movies" })).toBeVisible();
     await expect(menu).toBeHidden();
+
+    // On a narrow screen Scan stays at the right end and the scan's details take the row below.
+    const scan = await scanAtRightEnd(page);
+    const last = (await page.getByText(/^Last scan /).boundingBox())!;
+    expect(last.y).toBeGreaterThanOrEqual(scan.y + scan.height);
 
     // On a narrow screen the bar spans the whole width.
     await page.getByRole("checkbox", { name: "Select Fake Movie Two" }).check();

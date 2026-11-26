@@ -104,6 +104,68 @@ describe("the side panel on a wide screen", () => {
   });
 });
 
+// panel is the element the toggle controls, found whether it is open or closed.
+const panel = () => document.getElementById(toggle().getAttribute("aria-controls")!)!;
+
+describe("the side panel's open and closed states", () => {
+  it("keeps the closed panel out of reach and the open one in reach, on a wide screen", async () => {
+    const user = userEvent.setup();
+    renderApp("/movies");
+    expect(panel()).not.toHaveAttribute("inert");
+    expect(panel()).not.toHaveAttribute("aria-hidden");
+    expect(panel().style.width).toBe("14rem");
+    await user.click(screen.getByRole("button", { name: "Hide menu" }));
+    // Still there for aria-controls, but inert (no link can take the focus) and hidden from
+    // assistive technology; CSS hides it once its closing animation ended.
+    expect(panel()).toBeInTheDocument();
+    expect(panel()).toHaveAttribute("inert");
+    expect(panel()).toHaveAttribute("aria-hidden", "true");
+    expect(panel()).toHaveClass("invisible");
+    expect(panel().style.width).toBe("0px");
+    expect(panel().querySelectorAll("a").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "Show menu" }));
+    expect(panel()).not.toHaveAttribute("inert");
+    expect(panel()).toHaveClass("visible");
+  });
+
+  it("keeps the closed drawer out of reach and the open one in reach, on a narrow screen", async () => {
+    narrow();
+    const user = userEvent.setup();
+    renderApp("/movies");
+    expect(panel()).toHaveAttribute("inert");
+    expect(panel()).toHaveAttribute("aria-hidden", "true");
+    expect(panel()).toHaveClass("-translate-x-full", "invisible");
+    await user.click(screen.getByRole("button", { name: "Show menu" }));
+    expect(panel()).not.toHaveAttribute("inert");
+    expect(panel()).not.toHaveAttribute("aria-hidden");
+    expect(panel()).toHaveClass("translate-x-0", "visible");
+  });
+
+  it("animates the width on a wide screen, and not when reduced motion is asked for", () => {
+    renderApp("/movies");
+    expect(panel().className).toMatch(/transition-\[width/);
+    expect(panel()).toHaveClass("duration-200", "ease-out", "motion-reduce:transition-none");
+  });
+
+  it("slides the drawer and fades the backdrop on a narrow screen, and not with reduced motion", async () => {
+    narrow();
+    const user = userEvent.setup();
+    renderApp("/movies");
+    expect(panel().className).toMatch(/transition-\[transform/);
+    expect(panel()).toHaveClass("duration-200", "ease-out", "motion-reduce:transition-none");
+    await user.click(screen.getByRole("button", { name: "Show menu" }));
+    const backdrop = screen.getByTestId("menu-backdrop");
+    expect(backdrop.className).toMatch(/transition-\[opacity/);
+    expect(backdrop).toHaveClass("opacity-100", "duration-200", "motion-reduce:transition-none");
+  });
+
+  it("moves the bulk bar's left edge with the panel", () => {
+    renderApp("/movies");
+    const shell = panel().closest("[style*='--content-left']") as HTMLElement;
+    expect(shell.style.getPropertyValue("--content-left")).toBe("14rem");
+  });
+});
+
 describe("the side panel on a narrow screen", () => {
   it("is hidden by default and opens as a drawer over the content", async () => {
     narrow();
@@ -134,7 +196,8 @@ describe("the side panel on a narrow screen", () => {
     await user.click(screen.getByRole("button", { name: "Show menu" }));
     await user.click(screen.getByTestId("menu-backdrop"));
     expect(menu()).not.toBeInTheDocument();
-    expect(screen.queryByTestId("menu-backdrop")).not.toBeInTheDocument();
+    // The backdrop stays mounted so that it can fade out; closed, it takes no click.
+    expect(screen.getByTestId("menu-backdrop")).toHaveClass("opacity-0", "pointer-events-none", "invisible");
     expect(screen.getByRole("button", { name: "Show menu" })).toHaveFocus();
   });
 

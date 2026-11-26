@@ -16,7 +16,7 @@ export function BulkBar({ count, size, children, onClear, ref }: BulkBarProps) {
       ref={ref}
       role="region"
       aria-label="Selected rows"
-      className="fixed right-0 bottom-0 left-[var(--content-left,0px)] z-30 border-t bg-background/95 px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur"
+      className="fixed right-0 bottom-0 left-[var(--content-left,0px)] z-30 transition-[left] duration-200 ease-out motion-reduce:transition-none border-t bg-background/95 px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur"
     >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
         <span className="text-sm font-medium tabular-nums">

@@ -33,6 +33,49 @@ function status(over: Partial<Status> = {}): Status {
   };
 }
 
+describe("the header's layout", () => {
+  // DOM order: the lead (toggle and name), the scan's details, the controls. Only CSS moves
+  // the details below the controls on a narrow screen.
+  it("reads as name, scan details, then the controls, with Scan the last control", async () => {
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status({ dryRun: true }) }) });
+    renderWithProviders(<Header lead={<span>removarr</span>} />);
+    const scan = await screen.findByRole("button", { name: "Scan" });
+    const details = screen.getByTestId("scan-details");
+    const controls = screen.getByTestId("scan-controls");
+    const row = controls.parentElement!;
+    expect(Array.from(row.children)).toEqual([screen.getByText("removarr").parentElement, details, controls]);
+    expect(scan.parentElement!.lastElementChild).toBe(scan);
+    expect(within(scan.parentElement!).getByText("Dry run")).toBeInTheDocument();
+    expect(controls).toContainElement(scan);
+    expect(within(details).getByText(`Last scan ${formatDateTime(FINISHED)}`)).toBeInTheDocument();
+    expect(within(details).getByLabelText("Free space")).toBeInTheDocument();
+  });
+
+  it("gives the details a full-width second row on a narrow screen and the middle on a wide one", async () => {
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status({ stale: true }) }) });
+    renderWithProviders(<Header lead={<span>removarr</span>} />);
+    await screen.findByRole("button", { name: "Scan" });
+    const details = screen.getByTestId("scan-details");
+    expect(details).toHaveClass("order-3", "basis-full", "md:order-2", "md:flex-1");
+    expect(screen.getByTestId("scan-controls")).toHaveClass("order-2", "ml-auto", "md:order-3");
+    expect(within(details).getByText(/Settings changed since the last scan/)).toBeInTheDocument();
+  });
+
+  it("keeps the refusal message and the phase with the controls, after the Scan button", async () => {
+    mockApi({
+      "GET /api/status": () => ({ status: 200, body: status() }),
+      "POST /api/scans": () => ({ status: 409, body: { error: "a scan is running" } }),
+    });
+    renderWithProviders(<Header lead={<span>removarr</span>} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Scan" }));
+    const alert = await screen.findByRole("alert");
+    const controls = screen.getByTestId("scan-controls");
+    expect(controls).toContainElement(alert);
+    const scan = screen.getByRole("button", { name: "Scan" });
+    expect(scan.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
 describe("the header", () => {
   it("shows the last scan, the summary and the free space", async () => {
     mockApi({ "GET /api/status": () => ({ status: 200, body: status() }) });

@@ -128,7 +128,7 @@ describe("the candidate list", () => {
     const { user } = setup([alpha, beta, gamma]);
     expect(bar()).not.toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Select Beta" }));
-    expect(bar()).toHaveClass("fixed", "bottom-0");
+    expect(bar()).toHaveClass("fixed", "bottom-0", "transition-[left]", "motion-reduce:transition-none");
     await user.click(screen.getByRole("checkbox", { name: "Select Beta" }));
     expect(bar()).not.toBeInTheDocument();
   });

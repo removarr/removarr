@@ -149,50 +149,73 @@ export function Shell() {
   return (
     <div className="flex min-h-svh flex-col" style={shellStyle}>
       <header className="border-b" inert={drawer}>
-        <div className="flex flex-wrap items-center gap-4 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Button
-              ref={toggleRef}
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={open ? "Hide menu" : "Show menu"}
-              aria-expanded={open}
-              aria-controls={panelId}
-              onClick={toggle}
-            >
-              {open ? <PanelLeftClose aria-hidden="true" /> : <PanelLeftOpen aria-hidden="true" />}
-            </Button>
-            <span className="text-lg font-semibold">removarr</span>
-          </div>
-          <Header />
-        </div>
+        <Header
+          lead={
+            <>
+              <Button
+                ref={toggleRef}
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={open ? "Hide menu" : "Show menu"}
+                aria-expanded={open}
+                aria-controls={panelId}
+                onClick={toggle}
+              >
+                {open ? <PanelLeftClose aria-hidden="true" /> : <PanelLeftOpen aria-hidden="true" />}
+              </Button>
+              <span className="text-lg font-semibold">removarr</span>
+            </>
+          }
+        />
       </header>
       <div className="flex flex-1">
-        {drawer && (
+        {/* The backdrop stays mounted so that it can fade out as the drawer slides away. */}
+        {!wide && (
           <div
             data-testid="menu-backdrop"
             aria-hidden="true"
-            className="fixed inset-0 z-40 bg-black/50"
+            className={cn(
+              "fixed inset-0 z-40 bg-black/50 duration-200 ease-out motion-reduce:transition-none",
+              drawer
+                ? "visible opacity-100 transition-[opacity]"
+                : "pointer-events-none invisible opacity-0 transition-[opacity,visibility]",
+            )}
             onClick={() => setDrawerOpen(false)}
           />
         )}
+        {/* A closed panel stays in the document for aria-controls, but out of reach: inert, so
+            no link takes the focus, and hidden from assistive technology. CSS hides it once its
+            closing animation ended: visibility is part of the closing transition, so it turns
+            hidden at its end, and not of the opening one, so it turns visible at once. */}
         <nav
           ref={panelRef}
           id={panelId}
           aria-label="Main"
-          hidden={!open}
-          style={wide ? { width: PANEL_WIDTH } : undefined}
+          inert={!open}
+          aria-hidden={open ? undefined : true}
+          style={wide ? { width: open ? PANEL_WIDTH : "0px" } : undefined}
           className={cn(
-            "shrink-0 border-r bg-background",
-            !wide && "fixed inset-y-0 left-0 z-50 w-64 max-w-[80vw] overflow-y-auto shadow-lg",
+            "shrink-0 border-r bg-background duration-200 ease-out motion-reduce:transition-none",
+            wide
+              ? cn(
+                  "overflow-x-clip",
+                  open ? "visible transition-[width]" : "invisible border-transparent transition-[width,visibility]",
+                )
+              : cn(
+                  "fixed inset-y-0 left-0 z-50 w-64 max-w-[80vw] overflow-y-auto shadow-lg",
+                  open
+                    ? "visible translate-x-0 transition-[transform]"
+                    : "invisible -translate-x-full transition-[transform,visibility]",
+                ),
           )}
         >
-          {/* Beside the content the panel runs the full height; its links stay in view on scroll. */}
+          {/* Beside the content the panel runs the full height; its links stay in view on scroll.
+              The list keeps its width while the panel's width animates, so nothing reflows. */}
           <ul
             className={cn(
               "flex flex-col gap-1 p-3",
-              wide ? "sticky top-0 max-h-svh overflow-y-auto" : "pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+              wide ? "sticky top-0 max-h-svh w-56 overflow-y-auto" : "pb-[max(0.75rem,env(safe-area-inset-bottom))]",
             )}
           >
             {PAGES.map((item) => (
