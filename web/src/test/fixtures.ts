@@ -15,6 +15,29 @@ export const statusFixture: Status = {
   stale: false,
 };
 
+// SCAN_FINISHED is when the scan of scannedStatus finished.
+export const SCAN_FINISHED = "2026-11-20T10:30:00Z";
+
+// scannedStatus is a status after one finished scan of three lists, for the header and the
+// scan details.
+export function scannedStatus(over: Partial<Status> = {}): Status {
+  return {
+    ...statusFixture,
+    lastScan: {
+      id: 1, startedAt: "2026-11-20T10:29:00Z", finishedAt: SCAN_FINISHED, status: "done",
+      summary: {
+        lists: {
+          movies: { candidates: 12, protected: 1, unmatched: 2, waiting: 3 },
+          series: { candidates: 4, protected: 2, unmatched: 0, waiting: 1 },
+          torrents: { candidates: 9, protected: 0, unmatched: 1, waiting: 0 },
+        },
+        rootFolders: [{ path: "/media/movies", freeBytes: 2 * 1024 ** 3 }],
+      },
+    },
+    ...over,
+  };
+}
+
 export function torrentFixture(over: Partial<TorrentInfo> & { id: string; name: string }): TorrentInfo {
   return {
     size: GiB, state: "stalledUP", category: "movies", tracker: "tracker.example", ratio: 1.5, seedingDays: 30,

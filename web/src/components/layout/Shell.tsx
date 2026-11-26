@@ -5,6 +5,7 @@ import {
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { NavLink, Outlet } from "react-router";
 import { Header } from "@/components/header/Header";
+import { ScanDetails } from "@/components/header/ScanDetails";
 import { Button } from "@/components/ui/button";
 import { readOpen, writeOpen } from "@/lib/choice";
 import { useMediaQuery } from "@/lib/useMediaQuery";
@@ -218,9 +219,17 @@ export function Shell() {
             </li>
           </ul>
         </nav>
-        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6" inert={drawer}>
-          <Outlet />
-        </main>
+        {/* The content column: the scan details strip right below the header bar, beside the
+            panel and as wide as the page under it, then the page. The header is not sticky,
+            so the strip scrolls away with it. */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div data-testid="scan-strip" className="mx-auto w-full max-w-7xl px-4 pt-3" inert={drawer}>
+            <ScanDetails />
+          </div>
+          <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 pt-4 pb-6" inert={drawer}>
+            <Outlet />
+          </main>
+        </div>
       </div>
     </div>
   );

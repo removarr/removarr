@@ -104,6 +104,25 @@ describe("the side panel on a wide screen", () => {
   });
 });
 
+describe("the scan details strip", () => {
+  it("sits below the header bar, beside the side panel and above the page", async () => {
+    const { container } = renderApp("/movies");
+    const details = await screen.findByTestId("scan-details");
+    const header = container.querySelector("header")!;
+    const strip = screen.getByTestId("scan-strip");
+    const main = container.querySelector("main")!;
+    expect(strip).toContainElement(details);
+    expect(header).not.toContainElement(details);
+    expect(within(header).queryByText(/No scan yet|Last scan/)).not.toBeInTheDocument();
+    expect(header.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(strip.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Beside the panel: in the content column with the page, not in or under the panel.
+    expect(menu()).not.toContainElement(strip);
+    expect(strip.parentElement).toBe(main.parentElement);
+    expect(within(details).getByRole("button", { name: /^No scan yet/ })).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
 // panel is the element the toggle controls, found whether it is open or closed.
 const panel = () => document.getElementById(toggle().getAttribute("aria-controls")!)!;
 
@@ -203,20 +222,24 @@ describe("the side panel on a narrow screen", () => {
     expect(screen.getByRole("button", { name: "Show menu" })).toHaveFocus();
   });
 
-  it("makes the header and the page inert while the drawer is open", async () => {
+  it("makes the header, the scan details and the page inert while the drawer is open", async () => {
     narrow();
     const user = userEvent.setup();
     const { container } = renderApp("/movies");
     const header = container.querySelector("header")!;
     const main = container.querySelector("main")!;
+    const strip = screen.getByTestId("scan-strip");
     expect(header).not.toHaveAttribute("inert");
     expect(main).not.toHaveAttribute("inert");
+    expect(strip).not.toHaveAttribute("inert");
     await user.click(screen.getByRole("button", { name: "Show menu" }));
     expect(header).toHaveAttribute("inert");
     expect(main).toHaveAttribute("inert");
+    expect(strip).toHaveAttribute("inert");
     await user.keyboard("{Escape}");
     expect(header).not.toHaveAttribute("inert");
     expect(main).not.toHaveAttribute("inert");
+    expect(strip).not.toHaveAttribute("inert");
   });
 
   it("keeps the focus in the drawer when tabbing past its last or first link", async () => {

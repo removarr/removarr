@@ -31,6 +31,33 @@ async function scanAtRightEnd(page: Page) {
   return scan;
 }
 
+// checkScanStrip checks the scan details strip: right below the header bar, with Scan at the
+// header's right end and the chevron at the strip's right end; a click on the "Last scan" text
+// collapses the strip to that line (no warning for the fake library) and a second one brings
+// the details back.
+async function checkScanStrip(page: Page) {
+  await scanAtRightEnd(page);
+  const header = (await page.locator("header").boundingBox())!;
+  const details = page.getByTestId("scan-details");
+  const strip = (await details.boundingBox())!;
+  expect(strip.y).toBeGreaterThanOrEqual(header.y + header.height);
+  const chevron = (await page.getByTestId("scan-summary").locator("svg").last().boundingBox())!;
+  expect(strip.x + strip.width - (chevron.x + chevron.width)).toBeLessThanOrEqual(24);
+
+  const line = page.getByRole("button", { name: /^Last scan / });
+  await expect(line).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("attention")).toHaveCount(0);
+  await line.getByText(/^Last scan /).click();
+  await expect(line).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(async () => (await details.boundingBox())!.height).toBeLessThan(strip.height);
+  await expect.poll(async () => (await details.boundingBox())!.height).toBeLessThanOrEqual(48);
+  await expect(page.getByTestId("counts")).toBeHidden();
+  await line.getByText(/^Last scan /).click();
+  await expect(line).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("counts")).toBeVisible();
+  await expect.poll(async () => (await details.boundingBox())!.height).toBeCloseTo(strip.height, 0);
+}
+
 test("scan, ignore, delete, history and settings", async ({ page }) => {
   await test.step("the start page is Movies, with no scan yet", async () => {
     await page.goto("/");
@@ -42,11 +69,7 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
   await test.step("a scan lists two movies and the orphan torrent", async () => {
     await page.getByRole("button", { name: "Scan", exact: true }).click();
     await expect(page.getByText(/^Last scan /)).toBeVisible();
-    // On a wide screen the scan's details sit between the name and the Scan button.
-    const scan = await scanAtRightEnd(page);
-    const last = (await page.getByText(/^Last scan /).boundingBox())!;
-    expect(last.x + last.width).toBeLessThanOrEqual(scan.x);
-    expect(last.y).toBeLessThan(scan.y + scan.height);
+    await checkScanStrip(page);
     await expect(rows(page)).toHaveCount(2);
     await expect(page.getByRole("checkbox", { name: "Select Fake Movie One" })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Select Fake Movie Two" })).toBeVisible();
@@ -185,24 +208,8 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
     await expect(page.getByRole("heading", { level: 1, name: "Movies" })).toBeVisible();
     await expect(menu).toBeHidden();
 
-    // On a narrow screen Scan stays at the right end and the scan's details take the row below.
-    const scan = await scanAtRightEnd(page);
-    const last = (await page.getByText(/^Last scan /).boundingBox())!;
-    expect(last.y).toBeGreaterThanOrEqual(scan.y + scan.height);
-
-    // The details collapse to a one-line summary, with no warning for the fake library, and
-    // come back.
-    const details = page.getByTestId("scan-details");
-    const open = (await details.boundingBox())!.height;
-    await page.getByRole("button", { name: "Hide scan details" }).click();
-    await expect(page.getByTestId("scan-summary")).toHaveText(/^Last scan /);
-    await expect(page.getByTestId("attention")).toHaveCount(0);
-    await expect.poll(async () => (await details.boundingBox())!.height).toBeLessThan(open);
-    await expect.poll(async () => (await details.boundingBox())!.height).toBeLessThanOrEqual(48);
-    await page.getByRole("button", { name: "Show scan details" }).click();
-    await expect(page.getByTestId("scan-summary")).toHaveCount(0);
-    await expect(page.getByTestId("counts")).toBeVisible();
-    await expect.poll(async () => (await details.boundingBox())!.height).toBeCloseTo(open, 0);
+    // On a phone too, the strip sits below the header bar and its first line toggles it.
+    await checkScanStrip(page);
 
     // On a narrow screen the bar spans the whole width.
     await page.getByRole("checkbox", { name: "Select Fake Movie Two" }).check();
