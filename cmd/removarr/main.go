@@ -22,6 +22,7 @@ import (
 	"github.com/removarr/removarr/internal/planner"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
+	"github.com/removarr/removarr/internal/webui"
 )
 
 func main() {
@@ -57,7 +58,7 @@ func run(log *slog.Logger) error {
 	cfg := config.NewService(env, st)
 	apps := &app.Apps{Config: cfg, Timeout: 60 * time.Second}
 	j := newJobs(env, cfg, apps, st, log, ctx.Done())
-	server := &api.Server{Config: cfg, Store: st, Scanner: j.scans, Apps: apps, Planner: j.plans, Executor: j.exec, Log: log}
+	server := &api.Server{Config: cfg, Store: st, Scanner: j.scans, Apps: apps, Planner: j.plans, Executor: j.exec, Log: log, UI: webui.Handler(webui.Files())}
 
 	httpServer := &http.Server{
 		Handler:           server.Handler(),

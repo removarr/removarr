@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/removarr/removarr/internal/config"
 	"github.com/removarr/removarr/internal/domain"
@@ -17,6 +18,7 @@ import (
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
+	"github.com/removarr/removarr/internal/webui"
 )
 
 type fakeScanner struct {
@@ -101,6 +103,7 @@ func newHarness(t *testing.T, envConn map[string]string) *harness {
 		Planner:  h.planner,
 		Executor: h.executor,
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		UI:       webui.Handler(fstest.MapFS{"index.html": {Data: []byte("UI")}}),
 	}
 	h.handler = srv.Handler()
 	return h
@@ -146,6 +149,51 @@ func TestHealth(t *testing.T) {
 func TestUnknownPathsAreNotFound(t *testing.T) {
 	if rec := newHarness(t, nil).do(http.MethodGet, "/api/nope", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestServesTheUIOutsideTheAPI(t *testing.T) {
+	rec := newHarness(t, nil).do(http.MethodGet, "/movies", "")
+	if rec.Code != http.StatusOK || rec.Body.String() != "UI" {
+		t.Errorf("got %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAnUnknownAPIPathIsAJSONNotFoundAndNeverTheUI(t *testing.T) {
+	rec := newHarness(t, nil).do(http.MethodGet, "/api/nope", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if got := decode[map[string]string](t, rec); got["error"] == "" {
+		t.Errorf("no error in %v", got)
+	}
+}
+
+func TestARefusedHostGetsAReadablePageOutsideTheAPI(t *testing.T) {
+	h := newHarness(t, nil)
+	evil := func(r *http.Request) { r.Host = "evil.example" }
+	rec := h.do(http.MethodGet, "/movies", "", evil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/html; charset=utf-8" {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "REMOVARR_ALLOWED_HOSTS") {
+		t.Errorf("body = %q", rec.Body.String())
+	}
+	rec = h.do(http.MethodGet, "/api/status", "", evil)
+	if rec.Code != http.StatusForbidden || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+		t.Errorf("api: got %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestTheUIIsNotServedForChangingMethods(t *testing.T) {
+	if rec := newHarness(t, nil).do(http.MethodPost, "/", "{}"); rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", rec.Code)
 	}
 }
 

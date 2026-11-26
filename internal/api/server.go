@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"html"
 	"log/slog"
 	"mime"
 	"net"
@@ -69,6 +71,7 @@ type Server struct {
 	Executor Executor
 	Log      *slog.Logger
 	Now      func() time.Time // nil means time.Now
+	UI       http.Handler     // serves the web UI outside /api/; nil means no UI routes
 
 	// settingsMu lets one settings change run at a time. A change reads the saved rules,
 	// merges the request into them and saves the result, so two requests that each change
@@ -93,8 +96,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plans", s.buildPlan)
 	mux.HandleFunc("POST /api/plans/{id}/execute", s.executePlan)
 	mux.HandleFunc("GET /api/actions", s.listActions)
+	// An unknown API path must never fall through to the UI's page.
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "not found")
+	})
+	if s.UI != nil {
+		mux.Handle("/", s.UI)
+	}
 	return guard(mux, s.Config.Env().AllowedHosts)
 }
+
+const refusedHostMessage = "this server does not answer to the host name in the request; reach it by its IP address, or list the name in REMOVARR_ALLOWED_HOSTS"
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -119,8 +131,13 @@ func guard(next http.Handler, allowedHosts []string) http.Handler {
 			return
 		}
 		if !hostAllowed(r.Host, allowedHosts) {
-			writeError(w, http.StatusForbidden,
-				"this server does not answer to the host name in the request; reach it by its IP address, or list the name in REMOVARR_ALLOWED_HOSTS")
+			if !strings.HasPrefix(r.URL.Path, "/api/") {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusForbidden)
+				fmt.Fprintf(w, "<!doctype html><meta charset=\"utf-8\"><title>removarr</title><p>%s</p>", html.EscapeString(refusedHostMessage))
+				return
+			}
+			writeError(w, http.StatusForbidden, refusedHostMessage)
 			return
 		}
 		switch r.Method {
