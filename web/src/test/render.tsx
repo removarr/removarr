@@ -25,7 +25,9 @@ export function renderWithProviders(ui: ReactElement, opts: { route?: string } =
 }
 
 export type MockResponse = { status: number; body?: unknown };
-export type MockRoutes = Record<string, (init: RequestInit) => MockResponse>;
+// A route may answer later: a test that must see a state while a request is pending returns a
+// promise and resolves it when it is done looking.
+export type MockRoutes = Record<string, (init: RequestInit) => MockResponse | Promise<MockResponse>>;
 
 let unexpected: string[] = [];
 
@@ -51,7 +53,7 @@ export function mockApi(routes: MockRoutes) {
       unexpected.push(key);
       throw new TypeError(`no mock route for ${key}`);
     }
-    const { status, body } = route(init);
+    const { status, body } = await route(init);
     if (status === 204) return new Response(null, { status });
     return new Response(JSON.stringify(body ?? null), { status, headers: { "Content-Type": "application/json" } });
   });

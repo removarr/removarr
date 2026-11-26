@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, rowsBody } from "./client";
-import type { CandidatesResponse, ListKind, Status } from "./types";
+import type { CandidatesResponse, ExecuteResult, ListKind, Plan, Status } from "./types";
 
 // The query keys. A list's candidates are ["candidates", list, ignored].
 export const keys = {
@@ -51,7 +51,6 @@ export function useStartScan() {
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.status }),
     // A refusal usually means a job runs: read the status once (not a retry of the start).
     onError: () => qc.invalidateQueries({ queryKey: keys.status }),
-    // A refusal usually means a job runs: read the status once (not a retry of the start).
   });
 }
 
@@ -76,4 +75,32 @@ export function useIgnore() {
 // useUnignore removes the ignore of rows.
 export function useUnignore() {
   return useIgnoreMutation("DELETE");
+}
+
+// useBuildPlan asks the server for the plan that deletes the rows (spec 6.8, rule 1; 6.10).
+// Building reads every app. It is never retried on its own.
+export function useBuildPlan() {
+  return useMutation({
+    mutationFn: (rows: RowRefs) => api<Plan>("/api/plans", { method: "POST", body: rowsBody(rows) }),
+  });
+}
+
+// useExecutePlan executes one confirmed plan (spec 6.11). It is never retried on its own: a
+// plan runs once, and a second request would be refused anyway.
+export function useExecutePlan() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<ExecuteResult>(`/api/plans/${encodeURIComponent(id)}/execute`, { method: "POST", body: {} }),
+  });
+}
+
+// useRefreshAfterDelete returns a function that reloads what an execution changes: the lists,
+// the status and the history.
+export function useRefreshAfterDelete() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: keys.candidates });
+    qc.invalidateQueries({ queryKey: keys.status });
+    qc.invalidateQueries({ queryKey: keys.actions });
+  };
 }

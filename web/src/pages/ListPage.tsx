@@ -2,7 +2,9 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useCandidates, useStatus } from "@/api/queries";
 import type { Candidate, ListKind } from "@/api/types";
+import { DeleteFlow, useDeleteFlow } from "@/components/delete/DeleteFlow";
 import { CandidateList } from "@/components/list/CandidateList";
+import { Button } from "@/components/ui/button";
 import { IgnoreActions } from "@/components/list/IgnoreActions";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -13,8 +15,8 @@ import { torrentCard, torrentColumns, torrentSortKeys } from "@/components/rows/
 
 const TITLES: Record<ListKind, string> = { movies: "Movies", series: "Series", torrents: "Torrents" };
 
-// bulkActions is the slot that the ignore and delete tasks fill. ignoredView tells it which
-// view the rows come from.
+// bulkActions is the slot of the bulk bar next to Ignore. ignoredView tells it which view the
+// rows come from; ListPage fills it with Delete when the page gives none.
 export type BulkActions = (selected: Candidate[], clear: () => void, ignoredView: boolean) => ReactNode;
 
 function Message({ children }: { children: ReactNode }) {
@@ -36,6 +38,14 @@ export function ListPage({ list, bulkActions }: { list: ListKind; bulkActions?: 
   const status = useStatus();
   const [ignored, setIgnored] = useState(false);
   const candidates = useCandidates(list, ignored);
+  // The deletion lives here, above the list, so its dialog survives the list reloading.
+  const deletion = useDeleteFlow();
+  const deleteAction: BulkActions = (selected, clear) => (
+    <Button type="button" variant="destructive" size="sm" onClick={() => deletion.start(selected, clear)}>
+      Delete
+    </Button>
+  );
+  const extraActions = bulkActions ?? deleteAction;
   const title = (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-2xl font-semibold">{TITLES[list]}</h1>
@@ -80,7 +90,7 @@ export function ListPage({ list, bulkActions }: { list: ListKind; bulkActions?: 
         actions={(selected, clear) => (
           <>
             <IgnoreActions selected={selected} clear={clear} ignoredView={ignored} />
-            {ignored ? null : (bulkActions?.(selected, clear, false) ?? null)}
+            {ignored ? null : extraActions(selected, clear, false)}
           </>
         )}
         emptyText={ignored ? "Nothing is ignored in this list." : "Nothing to suggest."}
@@ -92,6 +102,7 @@ export function ListPage({ list, bulkActions }: { list: ListKind; bulkActions?: 
     <div className="flex flex-col gap-4">
       {title}
       {body}
+      <DeleteFlow flow={deletion} />
     </div>
   );
 }
