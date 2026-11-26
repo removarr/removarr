@@ -30,5 +30,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // The theme test reads index.css as text (?raw); Vitest leaves CSS empty unless included.
+    css: { include: [/index\.css/] },
   },
 });

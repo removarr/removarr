@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Status } from "@/api/types";
 import { formatDateTime } from "@/lib/format";
 import { mockApi, renderWithProviders } from "@/test/render";
@@ -32,6 +32,141 @@ function status(over: Partial<Status> = {}): Status {
     ...over,
   };
 }
+
+beforeEach(() => localStorage.clear());
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
+
+const DETAILS_KEY = "removarr.scanDetails";
+const hideDetails = () => screen.getByRole("button", { name: "Hide scan details" });
+const showDetails = () => screen.getByRole("button", { name: "Show scan details" });
+// detailsBody is the part the toggle collapses, found through its aria-controls.
+const detailsBody = (button: HTMLElement) => document.getElementById(button.getAttribute("aria-controls")!)!;
+const summary = () => screen.queryByTestId("scan-summary");
+
+describe("the scan details toggle", () => {
+  it("shows the details by default and collapses them to a one-line summary", async () => {
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status() }) });
+    const user = userEvent.setup();
+    renderWithProviders(<Header />);
+    await screen.findByTestId("counts");
+    const button = hideDetails();
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    const body = detailsBody(button);
+    expect(body).toContainElement(screen.getByTestId("counts"));
+    expect(body).not.toHaveAttribute("inert");
+    expect(body).not.toHaveAttribute("aria-hidden");
+    expect(button.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(summary()).not.toBeInTheDocument();
+
+    await user.click(button);
+    expect(showDetails()).toHaveAttribute("aria-expanded", "false");
+    expect(body).toBeInTheDocument();
+    expect(body).toHaveAttribute("inert");
+    expect(body).toHaveAttribute("aria-hidden", "true");
+    expect(body).toHaveClass("invisible", "grid-rows-[0fr]");
+    expect(summary()).toHaveTextContent(`Last scan ${formatDateTime(FINISHED)}`);
+    expect(screen.queryByTestId("attention")).not.toBeInTheDocument();
+
+    await user.click(showDetails());
+    expect(hideDetails()).toHaveAttribute("aria-expanded", "true");
+    expect(body).not.toHaveAttribute("inert");
+    expect(body).toHaveClass("visible", "grid-rows-[1fr]");
+    expect(summary()).not.toBeInTheDocument();
+  });
+
+  it("animates the collapse, and not when reduced motion is asked for", async () => {
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status() }) });
+    renderWithProviders(<Header />);
+    await screen.findByTestId("counts");
+    const body = detailsBody(hideDetails());
+    expect(body.className).toMatch(/transition-\[grid-template-rows/);
+    expect(body).toHaveClass("duration-200", "ease-out", "motion-reduce:transition-none");
+  });
+
+  it("puts the details on a surface of their own", async () => {
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status() }) });
+    renderWithProviders(<Header />);
+    await screen.findByTestId("counts");
+    expect(screen.getByTestId("scan-details")).toHaveClass("bg-muted/50", "rounded-md");
+  });
+
+  it("remembers that the details were collapsed", async () => {
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status() }) });
+    const user = userEvent.setup();
+    const first = renderWithProviders(<Header />);
+    await screen.findByTestId("counts");
+    await user.click(hideDetails());
+    expect(localStorage.getItem(DETAILS_KEY)).toBe("closed");
+    first.unmount();
+
+    renderWithProviders(<Header />);
+    expect(await screen.findByTestId("scan-summary")).toBeInTheDocument();
+    expect(showDetails()).toHaveAttribute("aria-expanded", "false");
+    await user.click(showDetails());
+    expect(localStorage.getItem(DETAILS_KEY)).toBe("open");
+  });
+
+  it("still works when the browser's storage throws", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("denied"); });
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status() }) });
+    const user = userEvent.setup();
+    renderWithProviders(<Header />);
+    await screen.findByTestId("counts");
+    await user.click(hideDetails());
+    expect(summary()).toBeInTheDocument();
+    await user.click(showDetails());
+    expect(summary()).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["the lists are out of date", { stale: true }, "Needs attention: lists out of date"],
+    ["the last scan failed", { scan: { running: false, lastError: "jellyfin refused" } }, "Needs attention: the last scan failed"],
+  ] as [string, Partial<Status>, string][])("flags a problem in the summary when %s", async (_, over, text) => {
+    localStorage.setItem(DETAILS_KEY, "closed");
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status(over) }) });
+    renderWithProviders(<Header />);
+    const mark = await screen.findByTestId("attention");
+    expect(summary()).toContainElement(mark);
+    expect(mark).toHaveTextContent(text);
+    expect(mark.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("flags a list that could not be produced in the summary", async () => {
+    localStorage.setItem(DETAILS_KEY, "closed");
+    const s = status();
+    s.lastScan!.summary.lists.series = { candidates: 0, protected: 0, unmatched: 0, waiting: 0, error: "sonarr is down" };
+    mockApi({ "GET /api/status": () => ({ status: 200, body: s }) });
+    renderWithProviders(<Header />);
+    expect(await screen.findByTestId("attention")).toHaveTextContent("Needs attention: a list could not be produced");
+  });
+
+  it("names every problem at once", async () => {
+    localStorage.setItem(DETAILS_KEY, "closed");
+    const s = status({ stale: true, scan: { running: false, lastError: "jellyfin refused" } });
+    s.lastScan!.summary.lists.series = { candidates: 0, protected: 0, unmatched: 0, waiting: 0, error: "sonarr is down" };
+    mockApi({ "GET /api/status": () => ({ status: 200, body: s }) });
+    renderWithProviders(<Header />);
+    expect(await screen.findByTestId("attention")).toHaveTextContent(
+      "Needs attention: lists out of date, a list could not be produced, the last scan failed",
+    );
+  });
+
+  it("says when there is no scan yet, and when one runs", async () => {
+    localStorage.setItem(DETAILS_KEY, "closed");
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status({ lastScan: null }) }) });
+    const first = renderWithProviders(<Header />);
+    expect(await screen.findByTestId("scan-summary")).toHaveTextContent("No scan yet");
+    first.unmount();
+
+    mockApi({ "GET /api/status": () => ({ status: 200, body: status({ scan: { running: true, phase: "reading" } }) }) });
+    renderWithProviders(<Header />);
+    expect(await screen.findByTestId("scan-summary")).toHaveTextContent("Scanning…");
+  });
+});
 
 describe("the header's layout", () => {
   // DOM order: the lead (toggle and name), the scan's details, the controls. Only CSS moves

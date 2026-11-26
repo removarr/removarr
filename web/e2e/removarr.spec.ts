@@ -190,6 +190,20 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
     const last = (await page.getByText(/^Last scan /).boundingBox())!;
     expect(last.y).toBeGreaterThanOrEqual(scan.y + scan.height);
 
+    // The details collapse to a one-line summary, with no warning for the fake library, and
+    // come back.
+    const details = page.getByTestId("scan-details");
+    const open = (await details.boundingBox())!.height;
+    await page.getByRole("button", { name: "Hide scan details" }).click();
+    await expect(page.getByTestId("scan-summary")).toHaveText(/^Last scan /);
+    await expect(page.getByTestId("attention")).toHaveCount(0);
+    await expect.poll(async () => (await details.boundingBox())!.height).toBeLessThan(open);
+    await expect.poll(async () => (await details.boundingBox())!.height).toBeLessThanOrEqual(48);
+    await page.getByRole("button", { name: "Show scan details" }).click();
+    await expect(page.getByTestId("scan-summary")).toHaveCount(0);
+    await expect(page.getByTestId("counts")).toBeVisible();
+    await expect.poll(async () => (await details.boundingBox())!.height).toBeCloseTo(open, 0);
+
     // On a narrow screen the bar spans the whole width.
     await page.getByRole("checkbox", { name: "Select Fake Movie Two" }).check();
     const bar = await page.getByRole("region", { name: "Selected rows" }).boundingBox();

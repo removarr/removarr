@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { NavLink, Outlet } from "react-router";
 import { Header } from "@/components/header/Header";
 import { Button } from "@/components/ui/button";
+import { readOpen, writeOpen } from "@/lib/choice";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { cn } from "@/lib/utils";
 
@@ -28,24 +29,6 @@ const SETTINGS_PAGES: Item[] = [
 // from --content-left, so that it covers the content and never the panel.
 const PANEL_WIDTH = "14rem";
 const STORAGE_KEY = "removarr.sidebar";
-
-// Storage can throw (blocked site data, a private window): the panel then starts shown and
-// the choice is not remembered.
-function readOpen(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) !== "closed";
-  } catch {
-    return true;
-  }
-}
-
-function writeOpen(open: boolean) {
-  try {
-    localStorage.setItem(STORAGE_KEY, open ? "open" : "closed");
-  } catch {
-    // The choice lasts until the page is reloaded.
-  }
-}
 
 function MenuLink({ item, current, onChoose, nested }: {
   item: Item; current: "page" | "true"; onChoose: () => void; nested?: boolean;
@@ -82,7 +65,7 @@ function MenuLink({ item, current, onChoose, nested }: {
 // aria-current="true" on its sub-pages, which are the current page themselves.
 export function Shell() {
   const wide = useMediaQuery("(min-width: 768px)");
-  const [wideOpen, setWideOpen] = useState(readOpen);
+  const [wideOpen, setWideOpen] = useState(() => readOpen(STORAGE_KEY));
   const [drawerOpen, setDrawerOpen] = useState(false);
   // A drawer left open must not reappear when the screen turns narrow again.
   const [drawerFor, setDrawerFor] = useState(wide);
@@ -98,7 +81,7 @@ export function Shell() {
   const toggle = () => {
     if (wide) {
       setWideOpen(!wideOpen);
-      writeOpen(!wideOpen);
+      writeOpen(STORAGE_KEY, !wideOpen);
     } else {
       setDrawerOpen(!drawerOpen);
     }
