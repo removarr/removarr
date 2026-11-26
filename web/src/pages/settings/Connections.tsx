@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError } from "@/api/client";
 import { useSaveSettings, useTestConnection } from "@/api/queries";
 import type { AppName, FieldView, Settings, Source } from "@/api/types";
@@ -33,7 +33,12 @@ export function Connections({ settings }: { settings: Settings }) {
   const [saved, setSaved] = useState(false);
   const save = useSaveSettings();
 
+  const [resets, setResets] = useState<Record<string, number>>({});
+
   const setEdit = (app: AppName, name: string, value: string | null | undefined) => {
+    // An edit equal to the shown value is no change (typing and deleting a character).
+    const view = settings.connections[app]?.[name];
+    if (typeof value === "string" && view && view.value !== undefined && value === view.value) value = undefined;
     setEdits((e) => ({ ...e, [app]: { ...e[app], [name]: value } }));
     setSaved(false);
   };
@@ -43,8 +48,18 @@ export function Connections({ settings }: { settings: Settings }) {
     if (!changes) return;
     setErrors({});
     setGeneral(undefined);
-    save.mutate({ connections: changes }, {
-      onSuccess: () => { setEdits(emptyEdits()); setSaved(true); },
+    const sent = changes;
+    save.mutate({ connections: sent }, {
+      onSuccess: () => {
+        // An old test result of a saved app no longer describes its connection.
+        setResets((r) => {
+          const next = { ...r };
+          for (const app of Object.keys(sent)) next[app] = (next[app] ?? 0) + 1;
+          return next;
+        });
+        setEdits(emptyEdits());
+        setSaved(true);
+      },
       onError: (e) => {
         if (e instanceof ApiError && e.field) setErrors({ [e.field]: e.message });
         else setGeneral(e.message);
@@ -59,7 +74,7 @@ export function Connections({ settings }: { settings: Settings }) {
         {APPS.map((a) => (
           <AppCard
             key={a.app} app={a.app} title={a.title} fields={a.fields} views={settings.connections[a.app] ?? {}}
-            edits={edits[a.app]} errors={errors} changed={changes?.[a.app] !== undefined}
+            resetToken={resets[a.app] ?? 0} edits={edits[a.app]} errors={errors} changed={changes?.[a.app] !== undefined}
             onEdit={(name, v) => setEdit(a.app, name, v)}
           />
         ))}
@@ -76,11 +91,13 @@ export function Connections({ settings }: { settings: Settings }) {
 interface AppCardProps {
   app: AppName; title: string; fields: FieldDef[]; views: Record<string, FieldView>;
   edits: Record<string, string | null | undefined>; errors: Record<string, string>; changed: boolean;
-  onEdit: (name: string, value: string | null | undefined) => void;
+  resetToken: number; onEdit: (name: string, value: string | null | undefined) => void;
 }
 
-function AppCard({ app, title, fields, views, edits, errors, changed, onEdit }: AppCardProps) {
+function AppCard({ app, title, fields, views, edits, errors, changed, resetToken, onEdit }: AppCardProps) {
   const test = useTestConnection(app);
+  const { reset } = test;
+  useEffect(() => { if (resetToken > 0) reset(); }, [resetToken, reset]);
   return (
     <Card role="group" aria-label={title}>
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
@@ -100,7 +117,11 @@ function AppCard({ app, title, fields, views, edits, errors, changed, onEdit }: 
               <Input
                 id={id}
                 type={f.secret ? "password" : "text"}
-                autoComplete="off"
+                // Browsers ignore "off" on a password field and fill saved logins, which would
+                // become edits the user never typed. "new-password" asks them not to; the name
+                // is not a login pattern.
+                autoComplete={f.secret ? "new-password" : "off"}
+                name={`removarr-${app}-${f.name}`}
                 placeholder={f.secret ? "Enter a new value to replace it" : undefined}
                 value={edit === undefined ? (f.secret ? "" : (view.value ?? "")) : (edit ?? "")}
                 onChange={(e) => onEdit(f.name, f.secret && e.target.value === "" ? undefined : e.target.value)}
@@ -121,6 +142,11 @@ function AppCard({ app, title, fields, views, edits, errors, changed, onEdit }: 
                   Clear saved value
                 </Button>
               ) : null}
+              {!f.secret && edit === "" && view.value && (
+                <p className="text-sm text-muted-foreground">
+                  Empty fields are not saved. Use Clear saved value to remove a saved value.
+                </p>
+              )}
               {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
             </div>
           );

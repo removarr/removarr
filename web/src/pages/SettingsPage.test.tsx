@@ -137,6 +137,58 @@ describe("SettingsPage connections", () => {
     expect(await within(sonarr).findByText("must be an http or https address")).toBeInTheDocument();
   });
 
+  it("keeps browser autofill out: secrets ask for a new password, the user name has its own name", async () => {
+    mockApi({ [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    renderWithProviders(<SettingsPage />);
+    const qb = await screen.findByRole("group", { name: "qBittorrent" });
+    expect(within(qb).getByLabelText("Password")).toHaveAttribute("autocomplete", "new-password");
+    expect(within(qb).getByLabelText("User name")).toHaveAttribute("autocomplete", "off");
+    expect(within(qb).getByLabelText("User name")).toHaveAttribute("name", "removarr-qbittorrent-username");
+    for (const app of ["Jellyfin", "Sonarr", "Radarr"]) {
+      const g = screen.getByRole("group", { name: app });
+      expect(within(g).getByLabelText("API key")).toHaveAttribute("autocomplete", "new-password");
+    }
+  });
+
+  it("does not count an edit equal to the shown value as a change", async () => {
+    mockApi({ [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    renderWithProviders(<SettingsPage />);
+    const qb = await screen.findByRole("group", { name: "qBittorrent" });
+    await userEvent.type(within(qb).getByLabelText("URL"), "x");
+    expect(within(qb).getByRole("button", { name: "Test" })).toBeDisabled();
+    await userEvent.type(within(qb).getByLabelText("URL"), "{Backspace}");
+    expect(within(qb).getByRole("button", { name: "Test" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save connections" })).toBeDisabled();
+  });
+
+  it("hints that an emptied field is not saved, and does not send it", async () => {
+    mockApi({ [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    renderWithProviders(<SettingsPage />);
+    const qb = await screen.findByRole("group", { name: "qBittorrent" });
+    expect(within(qb).queryByText(/Empty fields are not saved/)).not.toBeInTheDocument();
+    await userEvent.clear(within(qb).getByLabelText("User name"));
+    expect(
+      within(qb).getByText("Empty fields are not saved. Use Clear saved value to remove a saved value."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save connections" })).toBeDisabled();
+  });
+
+  it("drops an old test result after a successful save of that app", async () => {
+    mockApi({
+      [SETTINGS]: ok(settingsFixture()),
+      [PUT]: ok(settingsFixture()),
+      [USERS]: ok([]),
+      "POST /api/connections/sonarr/test": ok({ ok: true, detail: "Sonarr 4.0.12" }),
+    });
+    renderWithProviders(<SettingsPage />);
+    const sonarr = await screen.findByRole("group", { name: "Sonarr" });
+    await userEvent.click(within(sonarr).getByRole("button", { name: "Test" }));
+    expect(await within(sonarr).findByText("Connected: Sonarr 4.0.12")).toBeInTheDocument();
+    await userEvent.type(within(sonarr).getByLabelText("URL"), "1");
+    await userEvent.click(screen.getByRole("button", { name: "Save connections" }));
+    await waitFor(() => expect(within(sonarr).queryByText("Connected: Sonarr 4.0.12")).not.toBeInTheDocument());
+  });
+
   it("shows dry run read-only", async () => {
     mockApi({ [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
     renderWithProviders(<SettingsPage />);
