@@ -43,9 +43,13 @@ type Status struct {
 
 // Service runs scans, one at a time.
 type Service struct {
-	Build   func(ctx context.Context) (Providers, error)    // builds providers from the current settings
-	Rules   func(ctx context.Context) (domain.Rules, error) // loads the current rules
-	Store   Store
+	Build func(ctx context.Context) (Providers, error)    // builds providers from the current settings
+	Rules func(ctx context.Context) (domain.Rules, error) // loads the current rules
+	Store Store
+
+	// Fingerprint identifies the settings at the start of a scan; nil records none.
+	Fingerprint func(ctx context.Context) (string, error)
+
 	Now     func() time.Time
 	Log     *slog.Logger
 	Timeout time.Duration // limit for one background scan; 0 means 30 minutes
@@ -149,6 +153,14 @@ func (s *Service) setPhase(phase string) {
 
 func (s *Service) run(ctx context.Context) error {
 	started := s.Now()
+	var fingerprint string
+	if s.Fingerprint != nil {
+		fp, err := s.Fingerprint(ctx)
+		if err != nil {
+			return fmt.Errorf("load settings fingerprint: %w", err)
+		}
+		fingerprint = fp
+	}
 	rules, err := s.Rules(ctx)
 	if err != nil {
 		return fmt.Errorf("load rules: %w", err)
@@ -173,6 +185,7 @@ func (s *Service) run(ctx context.Context) error {
 	fetched.Ignored = scan.NewIgnoreSet(ignores).Keys()
 	s.setPhase("applying the rules")
 	summary, candidates := Compute(rules, s.Now(), fetched)
+	summary.SettingsFingerprint = fingerprint
 	s.setPhase("saving")
 	if err := s.Store.FinishScan(ctx, id, s.Now(), summary, candidates); err != nil {
 		return fmt.Errorf("save scan: %w", err)

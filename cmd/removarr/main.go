@@ -92,7 +92,7 @@ type jobs struct {
 func newJobs(env config.Env, cfg *config.Service, apps *app.Apps, st *store.Store, log *slog.Logger, stop <-chan struct{}) jobs {
 	g := &gate.Gate{}
 	return jobs{
-		scans: &scanner.Service{Gate: g, Build: apps.Providers, Rules: cfg.Rules, Store: st, Now: time.Now, Log: log},
+		scans: &scanner.Service{Gate: g, Build: apps.Providers, Rules: cfg.Rules, Fingerprint: cfg.Fingerprint, Store: st, Now: time.Now, Log: log},
 		plans: &planner.Service{Gate: g, Build: apps.Providers, Rules: cfg.Rules, Store: st, Now: time.Now},
 		exec:  &executor.Service{Gate: g, Build: apps.Writers, Store: st, DryRun: env.DryRun, Now: time.Now, Stop: stop, Log: log},
 	}

@@ -13,4 +13,6 @@ type ListSummary struct {
 type ScanSummary struct {
 	Lists       map[ListKind]ListSummary `json:"lists"`
 	RootFolders []RootFolder             `json:"rootFolders"`
+	// SettingsFingerprint identifies the settings the scan started with (spec 5.4).
+	SettingsFingerprint string `json:"settingsFingerprint,omitempty"`
 }

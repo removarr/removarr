@@ -92,6 +92,9 @@ type statusResponse struct {
 	Connections map[string]connectionStatus `json:"connections"`
 	Scan        scanner.Status              `json:"scan"`
 	LastScan    *store.ScanRecord           `json:"lastScan"`
+	// Stale is true when the rules or an app's address changed since the latest scan, so its
+	// lists may be out of date (spec 5.4). A scan without a fingerprint is never stale.
+	Stale bool `json:"stale"`
 }
 
 // status gives the header its overview: which apps are configured, the scan in progress,
@@ -116,5 +119,13 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.LastScan = v.rec
+	if v.rec != nil && v.rec.Summary.SettingsFingerprint != "" {
+		current, err := s.Config.Fingerprint(r.Context())
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		resp.Stale = current != v.rec.Summary.SettingsFingerprint
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
