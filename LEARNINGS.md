@@ -70,6 +70,15 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-19. **A base URL can carry a credential** (`http://user:pass@host`), and an error that repeats a bad URL can leak one. Such URLs are rejected, and URL errors are fixed texts.
 - 2026-11-19. **`url.Parse` accepts more than a base URL should be.** `http://http://host` parses with host `http`, and a bare `?` survives clearing the query because of `ForceQuery`. `NormalizeURL` checks the host name and the path and clears both.
 
+## Web UI
+
+- 2026-11-26. **`shadcn add` with the new-york-v4 registry installs an unpinned `cn` package and imports `from "cn"`.** That is an npm package nobody chose, at whatever version was newest. Remove it from `web/package.json` and import `cn` from `@/lib/utils` in the added component.
+- 2026-11-26. **TanStack Table's row selection keeps rows the filter hides**, so Delete after select all and a narrower filter would name rows the user cannot see, which spec 5.3 forbids. The lists keep the selection in plain state and prune it to the shown rows during render; actions receive only selected rows that are shown (`web/src/lib/selection.ts`, `CandidateList`).
+- 2026-11-26. **A scan can finish between two status polls**, so watching `running` go from true to false misses it and the lists stay old. The header also reloads the lists when the last scan's ID changes. Found by the end-to-end test.
+- 2026-11-26. **Season rows carry the series title**, so a name built from the title alone reads the same for every season of a series. Name a row with `rowLabel` wherever a row is shown by name: tied rows, plans, outcomes, history.
+- 2026-11-26. **A browser password manager fills a user-name-plus-password pair and ignores `autocomplete="off"` on password fields.** The filled values became edits the user never typed, and Save sent them as credentials. Connection inputs use `autocomplete="new-password"` for secrets, a name that is no login pattern, and an edit equal to the shown value is no change (`web/src/pages/settings/Connections.tsx`).
+- 2026-11-26. **`fs.Sub` answers `fs.ErrInvalid` for a name with a trailing slash, where `fstest.MapFS` answers `ErrNotExist`.** The embedded UI is an `fs.Sub`, so `/series/` answered 500 from the real binary while every test over a plain `MapFS` passed. Test the UI handler over `fs.Sub` (`internal/webui`).
+
 ## Storage and concurrency
 
 - 2026-11-22. **The store has one database connection.** Two statements of one request are not atomic: another request can run between them. Anything that must be seen together goes into one transaction (`LatestList`, `ApplySettings`). Inside a transaction, a call on `s.db` waits forever for the connection the transaction holds.
@@ -94,4 +103,5 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-22. **Have the reviewer break the code.** Each task review changed one line at a time in a scratch copy and looked for a test that failed. The changes that survived showed tests that passed for the wrong reason: the two ends of an episode range, the list a waiting row is counted in, and the media manager missing from a key.
 - 2026-11-24. **A Copilot review can come back empty because of quota.** The review summary then says the requesting user has insufficient remaining quota, with no threads, and `wait-for-copilot.sh` still ends with 0 because a review exists. Read the summary before treating the review as done; such a refusal counts as no review (pull request #13).
 - 2026-11-22. **An outside review still finds things after two internal ones.** The automated review of pull request 1 raised seven points, all real, most about what happens between two steps: two reads, two writes, two requests.
+- 2026-11-26. **`gofmt -l .` walks `web/node_modules`.** The nested `web/go.mod` keeps `go vet`, `go build` and `go test` out of `web/`, but gofmt does not look at modules and reports Go files of npm packages. The check is `gofmt -l cmd internal` (`AGENTS.md`).
 - 2026-11-22. **A subtest name ends up in the path of its temporary directory.** A name with a `%` in it broke opening a database there. Share one fixture across such cases.

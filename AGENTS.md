@@ -28,6 +28,7 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 | `internal/config` | Environment variables and saved settings; saved settings take priority |
 | `internal/app`, `internal/api` | Provider wiring and the HTTP API |
 | `internal/webui` | Embeds the built UI and serves it outside `/api/` |
+| `internal/e2e` | The real API on in-memory fake apps, for the end-to-end test. Never point it at a real config directory |
 | `web` | The browser UI: Vite, React, TypeScript. Builds into `internal/webui/dist` |
 | `docs/superpowers` | Spec and implementation plans |
 | `.agents/skills` | Skills for coding agents, in the Agent Skills format. `implement-issue` is the way of working for one issue, with the scripts for its review steps; they need `gh` |
@@ -38,7 +39,7 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 The checks. All of them must pass:
 
 ```
-gofmt -l .        # must print nothing
+gofmt -l cmd internal   # must print nothing; not `.`, which walks web/node_modules
 go vet ./...
 go test ./...
 go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/ ./internal/planner/ ./internal/executor/ ./internal/gate/
@@ -55,7 +56,7 @@ pnpm --dir web build
 pnpm --dir web e2e      # needs `pnpm --dir web exec playwright install chromium` once
 ```
 
-CI runs `go vet`, `go test` and the web checks up to `build` on every pull request.
+CI runs `go vet`, `go test` and every web check, `e2e` included, on every pull request.
 
 To start the server from the source tree. It runs until it is stopped, so it is not a check:
 
