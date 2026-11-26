@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "./client";
+import { api, rowsBody } from "./client";
 import type { CandidatesResponse, ListKind, Status } from "./types";
 
 // The query keys. A list's candidates are ["candidates", list, ignored].
@@ -53,4 +53,27 @@ export function useStartScan() {
     onError: () => qc.invalidateQueries({ queryKey: keys.status }),
     // A refusal usually means a job runs: read the status once (not a retry of the start).
   });
+}
+
+type RowRefs = { list: ListKind; key: string }[];
+
+function useIgnoreMutation(method: "POST" | "DELETE") {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: RowRefs) => api("/api/ignores", { method, body: rowsBody(rows) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.candidates });
+      qc.invalidateQueries({ queryKey: keys.status });
+    },
+  });
+}
+
+// useIgnore ignores rows of the latest scan (spec 6.5).
+export function useIgnore() {
+  return useIgnoreMutation("POST");
+}
+
+// useUnignore removes the ignore of rows.
+export function useUnignore() {
+  return useIgnoreMutation("DELETE");
 }
