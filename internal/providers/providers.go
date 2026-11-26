@@ -37,6 +37,27 @@ type DownloadClient interface {
 	Files(ctx context.Context, id string) ([]domain.DownloadFile, error)
 }
 
+// MovieWriter changes a movie manager. Only the executor is given one (spec 7.2).
+type MovieWriter interface {
+	// RemoveMovie removes the movie and its files, and adds it to the import exclusion list
+	// when addExclusion is set.
+	RemoveMovie(ctx context.Context, id int, addExclusion bool) error
+}
+
+// SeriesWriter changes a series manager. Only the executor is given one (spec 7.2).
+type SeriesWriter interface {
+	RemoveSeries(ctx context.Context, id int, addExclusion bool) error
+	DeleteEpisodeFiles(ctx context.Context, fileIDs []int) error
+	UnmonitorEpisodes(ctx context.Context, episodeIDs []int) error
+	UnmonitorSeasons(ctx context.Context, seriesID int, seasons []int) error
+}
+
+// DownloadRemover removes downloads from the download client. Only the executor is given one.
+type DownloadRemover interface {
+	// RemoveDownload removes the download, and its data when deleteData is set.
+	RemoveDownload(ctx context.Context, id string, deleteData bool) error
+}
+
 // Tester checks that an app can be reached with the configured credentials.
 // detail describes the app, for example "Sonarr 4.0.9".
 type Tester interface {

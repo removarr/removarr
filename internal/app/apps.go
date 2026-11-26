@@ -9,6 +9,7 @@ import (
 
 	"github.com/removarr/removarr/internal/config"
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/executor"
 	"github.com/removarr/removarr/internal/httpjson"
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/providers/jellyfin"
@@ -103,6 +104,37 @@ func (a *Apps) Providers(ctx context.Context) (scanner.Providers, error) {
 		p.Downloads = client
 	} else if c != (config.AppConn{}) {
 		p.Downloads = incomplete{}
+	}
+	return p, nil
+}
+
+// Writers returns the apps an execution changes, from the current settings (spec 6.11). An
+// app whose settings are missing or incomplete stays nil, and its steps fail as not
+// configured.
+func (a *Apps) Writers(ctx context.Context) (executor.Providers, error) {
+	var p executor.Providers
+	c, ok, err := a.Config.App(ctx, config.AppRadarr)
+	if err != nil {
+		return executor.Providers{}, err
+	}
+	if ok {
+		p.Movies = radarr.New(c.URL, c.APIKey, a.client())
+	}
+	if c, ok, err = a.Config.App(ctx, config.AppSonarr); err != nil {
+		return executor.Providers{}, err
+	}
+	if ok {
+		p.Series = sonarr.New(c.URL, c.APIKey, a.client())
+	}
+	if c, ok, err = a.Config.App(ctx, config.AppQBittorrent); err != nil {
+		return executor.Providers{}, err
+	}
+	if ok {
+		client, err := qbittorrent.New(c.URL, c.Username, c.Password, a.Timeout)
+		if err != nil {
+			return executor.Providers{}, err
+		}
+		p.Downloads, p.Remover = client, client
 	}
 	return p, nil
 }

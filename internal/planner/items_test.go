@@ -2,6 +2,7 @@ package planner
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,7 +29,7 @@ func TestMakeRemovesAMovieFromTheMovieManager(t *testing.T) {
 		r := rules()
 		r.AddExclusionOnDelete = exclude
 		item := onlyItem(t)(same(t, r, world(), nil, movieOne))
-		want := []domain.ManagerStep{{Manager: scan.ManagerMovies, Action: domain.StepRemoveMovie, ItemID: 1, AddExclusion: exclude}}
+		want := []domain.ManagerStep{{Manager: scan.ManagerMovies, Action: domain.StepRemoveMovie, ItemID: 1, RowKey: "tmdb:1", AddExclusion: exclude}}
 		if !reflect.DeepEqual(item.Steps, want) {
 			t.Errorf("exclude=%v: steps = %+v, want %+v", exclude, item.Steps, want)
 		}
@@ -40,7 +41,7 @@ func TestMakeRemovesAMovieFromTheMovieManager(t *testing.T) {
 
 func TestMakeRemovesAnEndedSeriesFromTheSeriesManager(t *testing.T) {
 	item := onlyItem(t)(same(t, rules(), world(), nil, theShow))
-	want := []domain.ManagerStep{{Manager: scan.ManagerSeries, Action: domain.StepRemoveSeries, ItemID: 1}}
+	want := []domain.ManagerStep{{Manager: scan.ManagerSeries, Action: domain.StepRemoveSeries, ItemID: 1, RowKey: "tvdb:100"}}
 	if !reflect.DeepEqual(item.Steps, want) || !reflect.DeepEqual(torrentIDs(item), []string{"p1"}) {
 		t.Errorf("item = %+v, want remove-series and the pack", item)
 	}
@@ -64,9 +65,9 @@ func TestMakeDeletesTheFilesOfARunningSeries(t *testing.T) {
 	running(&f, true)
 	item := onlyItem(t)(same(t, rules(), f, nil, theShow))
 	want := []domain.ManagerStep{
-		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}, RowKey: "tvdb:100"},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}, RowKey: "tvdb:100"},
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}, RowKey: "tvdb:100"},
 	}
 	if !reflect.DeepEqual(item.Steps, want) {
 		t.Errorf("steps = %+v, want %+v", item.Steps, want)
@@ -97,9 +98,9 @@ func TestMakeDeletesTheFilesOfASeasonRow(t *testing.T) {
 	s.Episodes[2].File = mfile(121, 500)
 	item := onlyItem(t)(same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1")))
 	want := []domain.ManagerStep{
-		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}, RowKey: "tvdb:100:s1"},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}, RowKey: "tvdb:100:s1"},
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}, RowKey: "tvdb:100:s1"},
 	}
 	if !reflect.DeepEqual(item.Steps, want) {
 		t.Errorf("steps = %+v, want %+v", item.Steps, want)
@@ -125,9 +126,9 @@ func TestMakeUnmonitorsOnlyTheFinishedSeasonsOfTheRow(t *testing.T) {
 	}
 	item := onlyItem(t)(same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1")))
 	want := []domain.ManagerStep{
-		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}},
-		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: 1, EpisodeIDs: []int{11, 12}, RowKey: "tvdb:100:s1"},
+		{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: 1, Seasons: []int{1}, RowKey: "tvdb:100:s1"},
+		{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: 1, FileIDs: []int{111, 112}, RowKey: "tvdb:100:s1"},
 	}
 	if !reflect.DeepEqual(item.Steps, want) {
 		t.Errorf("steps = %+v, want %+v", item.Steps, want)
@@ -163,6 +164,39 @@ func TestMakeDeletesAFileSharedByTwoSeasonRowsOnce(t *testing.T) {
 	}
 	if !reflect.DeepEqual(deleted, map[int]int{111: 1, 130: 1}) {
 		t.Errorf("files deleted = %v, want 111 and 130 once each", deleted)
+	}
+}
+
+// Season 2's episode shares the file season 1 deletes: it must be unmonitored before that
+// file goes, or a failed step leaves a deleted episode that Sonarr downloads again.
+func TestEveryUnmonitorStepOfAnItemComesBeforeItsDeletes(t *testing.T) {
+	r := rules()
+	r.SeriesUnit = domain.UnitSeason
+	f := world()
+	s := &f.Series.Value.Series[0]
+	s.Ended = false
+	s.Episodes[1].File = mfile(130, 500)
+	s.Episodes = append(s.Episodes,
+		domain.Episode{ID: 21, Season: 2, Number: 1, File: mfile(130, 500)},
+		domain.Episode{ID: 31, Season: 3, Number: 1, File: mfile(131, 500)})
+	f.Series.Value.Links = domain.Links{Grabbed: map[string][]int{}, FileSource: map[int]string{}, Queue: map[string]bool{}}
+	f.Library.Value.Episodes = append(f.Library.Value.Episodes, domain.ServerEpisode{SeriesID: "ss1", Season: 2, Episode: 1, States: played()})
+	item := onlyItem(t)(same(t, r, f, nil, sel(domain.ListSeries, "tvdb:100:s1")))
+	var order []string
+	deleted := false
+	for _, step := range item.Steps {
+		order = append(order, step.RowKey+" "+step.Action)
+		switch step.Action {
+		case domain.StepDeleteEpisodeFiles:
+			deleted = true
+		case domain.StepUnmonitorEpisodes, domain.StepUnmonitorSeasons:
+			if deleted {
+				t.Errorf("steps = %q: an unmonitor step comes after a delete", order)
+			}
+		}
+	}
+	if !deleted || !slices.Contains(order, "tvdb:100:s2 "+domain.StepUnmonitorEpisodes) {
+		t.Fatalf("steps = %q, want season 2 unmonitored and a delete", order)
 	}
 }
 

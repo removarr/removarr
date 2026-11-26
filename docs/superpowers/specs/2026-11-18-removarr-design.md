@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c.
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c. 2026-11-24: how a plan is executed and recorded (6.7, 6.8, 6.11, 7.1, 7.2, 7.4, 7.5, 7.6, 8, 16.2), decided from the principles while building stage 2d.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -242,8 +242,10 @@ With both minimums off, nothing is flagged. The flag is information only. It app
 |---|---|
 | Movie | Remove the movie from Radarr, with its files. |
 | Series row, series ended | Remove the series from Sonarr, with its files (specials included). |
-| Series row, still airing | Delete the episode files in regular seasons, all of which are watched. Unmonitor those episodes. Unmonitor each of those seasons that has finished airing. The series stays, and upcoming episodes still download. |
-| Season row | Delete the season's episode files. Unmonitor those episodes. Unmonitor the season if it has finished airing. The series stays. |
+| Series row, still airing | Unmonitor the episodes that have files in regular seasons, all of which are watched. Unmonitor each of those seasons that has finished airing. Delete those episode files. The series stays, and upcoming episodes still download. |
+| Season row | Unmonitor the season's episodes that have files. Unmonitor the season if it has finished airing. Delete those episode files. The series stays. |
+
+Unmonitoring comes before deleting: if the deletion fails, the files stay and nothing is downloaded again; the other way round, a failed unmonitor would leave deleted episodes monitored, and Sonarr would download them again. Within a plan item, every unmonitor step of every row comes before any other step, since one row can delete a file that holds another row's episode.
 | Orphan or unlinked torrent | None. |
 
 **Download client step.** The same rule applies to every movie, series and season row: after the media manager step, removarr removes, with data, each torrent that
@@ -261,7 +263,7 @@ Notes:
 - **Data outside the library.** A torrent can hold files that are not in the library, because they were never imported or were replaced since. They go with the torrent. A torrent's data outside the library is its size minus the sizes of the library files it backs. The row and the confirmation state this amount for every torrent where it is 50 MB or more. It is information only and never blocks a deletion.
 - A torrent that is associated with a movie or episode by content (6.6) is treated the same as one associated by history.
 - **Exclusion list:** when the setting is on, removing a movie from Radarr or a series from Sonarr also adds it to that app's import exclusion list, so an import list does not add it back.
-- **Shared data:** if a torrent being removed has the same content path as a torrent that is not being removed, or one of the two paths lies inside the other, removarr removes the torrent entry and keeps the data. A torrent whose content path the download client does not report keeps its data too, and so does every torrent being removed while a torrent that stays has no reported content path: unsure means keep. Paths are compared without regard to case or to the kind and number of separators, which only ever keeps more. The plan states this for each torrent; when the plan is executed, removarr decides it again from the torrents that are actually removed, because a failed item keeps its torrents (6.8, rule 4).
+- **Shared data:** if a torrent being removed has the same content path as a torrent that is not being removed, or one of the two paths lies inside the other, removarr removes the torrent entry and keeps the data. A torrent whose content path the download client does not report keeps its data too, and so does every torrent being removed while a torrent that stays has no reported content path: unsure means keep. Paths are compared without regard to case or to the kind and number of separators, which only ever keeps more. The plan states this for each torrent; when the plan is executed, removarr decides it again from the torrents that are actually removed, because a failed item keeps its torrents (6.8, rule 4; 6.11).
 - **Linked by file size.** The plan marks each torrent that is tied to the deleted items only by content (6.6), so that the case of two unrelated files of the same size can be checked before confirming.
 - A torrent appears once in a plan. When a selected torrent row is removed with a selected movie or series anyway, the torrent row is skipped and names that item.
 - Deleting an orphan or unlinked torrent never changes anything in Sonarr or Radarr.
@@ -270,7 +272,7 @@ Notes:
 
 1. **Nothing is deleted without a confirmed plan.** Selecting Delete asks the server for a plan. The server builds it from live data, not from the stored scan: the apps are read again and every selected item is re-evaluated with the same rules as the scan (6.10). Items that no longer qualify are listed in the plan as skipped, with the reason. The confirmation dialog shows the plan. Only a confirmed plan is executed.
 2. **Plans expire** ten minutes after they are built. An expired plan cannot be executed; the user rebuilds it.
-3. **Order per item:** media manager first, then torrents. If the media manager step fails, the torrent steps for that item are skipped. Tied rows (6.3) count as one item: all of their media manager steps come first.
+3. **Order per item:** media manager first, then torrents. If the media manager step fails, the torrent steps for that item are skipped. Tied rows (6.3) count as one item: all of their media manager steps come first. An item stops at its first failed step: the steps after it are not sent and are recorded as skipped (6.11).
 4. **Failures are contained.** A failed item is recorded with its error and the remaining items continue. Anything left behind, such as a torrent whose media was already removed, appears as an orphan in the next scan.
 5. **No guessing when an app is down.** A list is produced only when every app it depends on answered completely:
    - Watched movies: Jellyfin, Radarr, qBittorrent, and Sonarr when it is configured.
@@ -302,6 +304,22 @@ Decided from the principles in section 2 while building stage 2c.
 - A torrent row becomes an item of its own, with the torrent and no media manager step.
 - The plan is stored with its expiry (6.8, rule 2) and returned to the user for confirmation.
 
+### 6.11 Executing a plan
+
+Decided from the principles in section 2 while building stage 2d.
+
+- **One thing at a time.** A scan, the building of a plan and the execution of a plan never run at the same time. A request to start one while another runs is refused with a message that says what is running.
+- **A plan runs once.** Executing a plan takes it out of the store, so a second request for it finds no plan. Executing a plan also discards every other pending plan: they were built from data this execution changes, and the user rebuilds them. The expiry stored with the plan decides whether it can still run (6.8, rule 2). A request for a plan that is unknown, already executed or discarded, or expired is refused and changes nothing.
+- **Items in plan order.** Each item runs its media manager steps in the order the plan lists them, then its torrents, one torrent at a time (6.8, rule 3). The first step that fails stops the item; the steps after it, torrents included, are not sent and are recorded as skipped. The next item runs regardless (6.8, rule 4).
+- **Torrents are decided again.** Right before an item's torrents, removarr reads the download list again. A torrent of the plan that is no longer in the download client is recorded as already gone and needs no call. If the list cannot be read, the item's torrent steps fail with that error.
+- **Shared data at execution.** A torrent keeps its data when the plan says so, or when, at the moment it is removed, its content path is unknown or a download that is still in the client has a content path that is unknown, the same, inside it or containing it (6.7, shared data). So a torrent whose data another torrent of the plan also holds keeps it while that torrent is still there, and the last of them to go takes the data with it. Within an item, torrents with longer content paths go first, so a torrent whose directory holds another's goes after it and the directory goes as a whole. A failed or skipped removal leaves its torrent in the client, and every torrent removed after it keeps the data they share. Unsure means keep.
+- **Dry run** (6.8, rule 6). Every step is recorded as it would have run, the shared-data decision included, and no call that changes anything is sent. The download list is still read. The stored lists stay as they are.
+- **History.** Each item is recorded as soon as it finishes, so an execution that is cut off keeps what it did: the time, the plan, whether it was a dry run, its rows with their sizes, its size, its outcome (done, failed, or dry run), and every step with its result (done, failed with the error, skipped, already gone, or dry run). A torrent step records whether its data was kept: for a removal that was sent, or would have been in a dry run, the choice sent with it, also when the request failed; for a skipped torrent or one already gone, the plan's. Rows the plan skipped are not recorded: nothing was done to them.
+- **Stored lists** (7.4, step 5). After each item, unless it was a dry run, removarr removes from the latest stored scan each row whose media manager steps all succeeded, a torrent row whose torrent was removed or was already gone, and the torrent-list row of every torrent the item removed. A row whose steps did not all succeed stays, and the next plan for it reads the apps again (6.10).
+- **To the end.** An execution runs to its end even when the user's browser goes away. The request answers with what was recorded.
+- **Stopping removarr.** When removarr is stopped during an execution, it starts no further item, waits up to two minutes for the item it is running to finish and be recorded, and then stops. Items that did not start are not recorded and stay in the lists: nothing was done to them.
+- **A media manager that no longer knows the item** answers an error, and the item fails: removarr does not guess that it was removed some other way. Its torrents stay, and the next scan shows them (6.8, rule 4).
+
 ## 7. Architecture
 
 ```
@@ -329,7 +347,8 @@ The UI is compiled to static files and embedded in the Go binary, so the whole a
 | `scan` | The rules of section 6.1 to 6.6, as pure functions from snapshots to candidates. No I/O. | `domain` |
 | `scanner` | Runs one scan: reads every configured app, calls `scan`, and stores the result. | `providers`, `scan`, `store` |
 | `planner` | Builds a plan for selected items from live data (6.7, 6.8, 6.10). It reads and evaluates through `scanner`, so a plan applies exactly the rules of a scan. | `scanner`, `providers`, `scan`, `domain` |
-| `executor` | Runs a plan step by step and records results. | `providers`, `store` |
+| `executor` | Runs a plan step by step and records results (6.11). The only unit that changes anything in an app. | `providers`, `store`, `domain` |
+| `gate` | Lets one scan, plan building or execution run at a time (6.11). | nothing |
 | `store` | SQLite persistence. | `domain` |
 | `config` | Environment variables and the UI-over-env precedence. | `store` |
 | `app` | Builds provider implementations from the current settings. | `config`, `providers` |
@@ -355,6 +374,8 @@ Illustrative shape, not final signatures.
 
 The seeding fields are optional so that a usenet client, which does not seed, can implement the same interface later.
 
+The operations that change something form interfaces of their own, separate from the ones that read, and only the executor is given them. A scan or a plan can therefore not change an app, and the compiler checks it.
+
 Adding Plex, Emby or another download client means adding one implementation of one interface. The scan engine, planner, executor and UI do not change.
 
 ### 7.3 Scan flow
@@ -371,8 +392,8 @@ Adding Plex, Emby or another download client means adding one implementation of 
 1. The user selects rows and chooses Delete.
 2. The server builds a plan from live data and stores it with an expiry.
 3. The UI shows the plan grouped by app: what is removed, which torrents are below the seeding minimum, which torrents stay and why, and which items were skipped.
-4. The user confirms. The server executes the plan item by item, in order.
-5. The server records each item in the history. It removes the deleted candidates from the stored scan, along with any torrent rows whose torrents were removed, so the lists are correct without a rescan.
+4. The user confirms. The server executes the plan item by item, in order (6.11).
+5. The server records each item in the history. It removes the deleted candidates from the stored scan, along with any torrent rows whose torrents were removed, so the lists are correct without a rescan (6.11).
 6. The UI shows the outcome, including any failures.
 
 ### 7.5 Storage
@@ -385,8 +406,8 @@ One SQLite file in the config directory.
 | `ignores` | Kind, stable key, title at the time of ignoring, created time. |
 | `scans` | Start and end time, status, summary. The last ten are kept. |
 | `candidates` | The latest scan's rows, also those that wait (6.3): list, stable key, row data as JSON. |
-| `plans` | Pending plans with their expiry. |
-| `actions` | History: time, list, key, title, size, outcome, per-step results. |
+| `plans` | Pending plans with their expiry. The `expires_at` column decides whether a plan can still run. |
+| `actions` | History, one record per executed item (6.11): time, plan, dry run, outcome, size, and the rows and per-step results as JSON. |
 
 ### 7.6 HTTP API
 
@@ -399,8 +420,8 @@ One SQLite file in the config directory.
 | `GET /api/candidates?list=…&ignored=…` | Rows of one list. |
 | `POST /api/ignores`, `DELETE /api/ignores` | Ignore and un-ignore rows, in bulk. The body names each row by list and key (6.5). |
 | `POST /api/plans` | Build a plan for the selected rows. |
-| `POST /api/plans/{id}/execute` | Execute a confirmed plan. |
-| `GET /api/actions` | History, paged. |
+| `POST /api/plans/{id}/execute` | Execute a confirmed plan and answer with the records of its items (6.11). |
+| `GET /api/actions?before=…&limit=…` | History, newest first. `before` is the ID of the oldest record of the previous page; `limit` is 50 by default and at most 200. |
 | `GET /api/settings`, `PUT /api/settings` | Read and change settings. |
 | `POST /api/connections/{app}/test` | Test one connection. |
 | `GET /api/media-server/users` | Users for the counting-users picker. |
@@ -418,8 +439,8 @@ One SQLite file in the config directory.
 - **App unreachable or returning errors during a scan:** the lists that depend on it show the error; other lists are still produced.
 - **App unreachable while planning:** the affected items are skipped in the plan with the reason.
 - **Step fails while executing:** see 6.8, rules 3 and 4.
-- **Scan already running:** a second start request is refused with a clear message.
-- **Expired plan:** execution is refused and the UI offers to rebuild it.
+- **Scan already running:** a second start request is refused with a clear message. So is a request to build or execute a plan while a scan, a plan or an execution runs, and the other way round (6.11).
+- **Expired plan:** execution is refused and the UI offers to rebuild it. A plan that was already executed or discarded is refused the same way.
 - **Invalid settings:** rejected on save with a message naming the field.
 
 ## 9. Configuration
@@ -571,7 +592,9 @@ The same raw answers showed what linking by content does not reach:
 
 Assumption: Sonarr's API can unmonitor individual episodes and a season. If unmonitoring a season does not also unmonitor its episodes, removarr does both explicitly.
 
-Observed: each season object on a series and each episode carries a `monitored` field. Stage 1 only reads. Whether unmonitoring a season also unmonitors its episodes is still to be checked when stage 2 first changes it. Every series on the reference stack has a TVDB ID.
+Observed: each season object on a series and each episode carries a `monitored` field. Stage 1 only reads. Every series on the reference stack has a TVDB ID.
+
+Whether unmonitoring a season also unmonitors its episodes was answered from Sonarr's source for version 4.0.12 while building stage 2d: saving a series whose season changed from monitored to unmonitored sets every episode of that season to the same (`SeriesService.UpdateSeries` calls `SetEpisodeMonitoredBySeason`). removarr does both anyway: it unmonitors the episodes whose files it deletes, and then the season. To be confirmed on the reference stack with dry run off.
 
 ### 16.3 Jellyfin reports watch state per user: holds
 

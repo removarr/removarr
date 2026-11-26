@@ -13,6 +13,7 @@ import (
 
 	"github.com/removarr/removarr/internal/config"
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/executor"
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
@@ -60,13 +61,14 @@ func (f *fakeApps) MediaServer(context.Context) (providers.MediaServer, error) {
 // harness is a Server over a real store in a temporary directory, with fake apps and a
 // fake scanner.
 type harness struct {
-	t       *testing.T
-	store   *store.Store
-	config  *config.Service
-	scanner *fakeScanner
-	apps    *fakeApps
-	planner *fakePlanner
-	handler http.Handler
+	t        *testing.T
+	store    *store.Store
+	config   *config.Service
+	scanner  *fakeScanner
+	apps     *fakeApps
+	planner  *fakePlanner
+	executor *fakeExecutor
+	handler  http.Handler
 }
 
 func newHarness(t *testing.T, envConn map[string]string) *harness {
@@ -86,17 +88,19 @@ func newHarness(t *testing.T, envConn map[string]string) *harness {
 			Port: 7272, ConfigDir: "/config", DryRun: true, Conn: envConn,
 			AllowedHosts: []string{"removarr.local"},
 		}, st),
-		scanner: &fakeScanner{},
-		apps:    &fakeApps{testers: map[string]providers.Tester{}},
-		planner: &fakePlanner{},
+		scanner:  &fakeScanner{},
+		apps:     &fakeApps{testers: map[string]providers.Tester{}},
+		planner:  &fakePlanner{},
+		executor: &fakeExecutor{},
 	}
 	srv := &Server{
-		Config:  h.config,
-		Store:   st,
-		Scanner: h.scanner,
-		Apps:    h.apps,
-		Planner: h.planner,
-		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Config:   h.config,
+		Store:    st,
+		Scanner:  h.scanner,
+		Apps:     h.apps,
+		Planner:  h.planner,
+		Executor: h.executor,
+		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	h.handler = srv.Handler()
 	return h
@@ -283,6 +287,17 @@ func TestGuardStopsARequestMadeThroughAnotherSitesName(t *testing.T) {
 	if rec := h.do(http.MethodPost, "/api/connections/sonarr/test", "", rebound); rec.Code != http.StatusForbidden {
 		t.Errorf("connection test: status = %d, want 403", rec.Code)
 	}
+}
+
+type fakeExecutor struct {
+	plan   string
+	result executor.Result
+	err    error
+}
+
+func (f *fakeExecutor) Execute(_ context.Context, planID string) (executor.Result, error) {
+	f.plan = planID
+	return f.result, f.err
 }
 
 type fakePlanner struct {

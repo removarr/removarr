@@ -56,6 +56,7 @@ type PlanRow struct {
 type ManagerStep struct {
 	Manager      string `json:"manager"` // "movies" or "series"
 	Action       string `json:"action"`  // one of the Step constants
+	RowKey       string `json:"rowKey"`  // the key of the row the step belongs to, in the list of Manager
 	ItemID       int    `json:"itemId"`
 	FileIDs      []int  `json:"fileIds,omitempty"`      // delete-episode-files
 	EpisodeIDs   []int  `json:"episodeIds,omitempty"`   // unmonitor-episodes

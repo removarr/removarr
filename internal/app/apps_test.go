@@ -74,6 +74,36 @@ func TestProvidersForConfiguredApps(t *testing.T) {
 	}
 }
 
+func TestWritersForConfiguredApps(t *testing.T) {
+	p, err := apps(map[string]string{
+		"radarr.url": "http://radarr:7878", "radarr.api_key": "rk",
+		"sonarr.url": "http://sonarr:8989", "sonarr.api_key": "sk",
+		"qbittorrent.url": "http://qbit:8080",
+	}).Writers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Movies == nil || p.Series == nil || p.Downloads == nil || p.Remover == nil {
+		t.Errorf("all four are configured: %+v", p)
+	}
+}
+
+func TestWritersStayNilForAnAppWithIncompleteSettings(t *testing.T) {
+	p, err := apps(map[string]string{
+		"radarr.url":      "http://radarr:7878", // no API key
+		"qbittorrent.url": "http://qbit:8080",
+	}).Writers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Movies != nil || p.Series != nil {
+		t.Errorf("radarr is partly entered and sonarr absent, want nil: %+v", p)
+	}
+	if p.Downloads == nil || p.Remover == nil {
+		t.Errorf("qbittorrent is configured: %+v", p)
+	}
+}
+
 func TestProvidersForIncompleteApps(t *testing.T) {
 	// Each read the scanner makes of a provider, so every one can be checked.
 	reads := map[string]func(p scanner.Providers) (bool, error){

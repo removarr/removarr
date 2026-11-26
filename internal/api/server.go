@@ -19,6 +19,8 @@ import (
 
 	"github.com/removarr/removarr/internal/config"
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/executor"
+	"github.com/removarr/removarr/internal/gate"
 	"github.com/removarr/removarr/internal/providers"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
@@ -38,6 +40,12 @@ type Store interface {
 	ReadLatest(ctx context.Context) (store.Latest, error)
 	AddIgnores(ctx context.Context, ignores []domain.Ignore) error
 	RemoveIgnores(ctx context.Context, rows []domain.RowRef) error
+	Actions(ctx context.Context, before int64, limit int) ([]domain.Action, error)
+}
+
+// Executor carries out a stored plan. *executor.Service satisfies it.
+type Executor interface {
+	Execute(ctx context.Context, planID string) (executor.Result, error)
 }
 
 // Planner builds plans for deletions. *planner.Service satisfies it.
@@ -53,13 +61,14 @@ type Apps interface {
 
 // Server holds what the handlers need.
 type Server struct {
-	Config  *config.Service
-	Store   Store
-	Scanner Scanner
-	Apps    Apps
-	Planner Planner
-	Log     *slog.Logger
-	Now     func() time.Time // nil means time.Now
+	Config   *config.Service
+	Store    Store
+	Scanner  Scanner
+	Apps     Apps
+	Planner  Planner
+	Executor Executor
+	Log      *slog.Logger
+	Now      func() time.Time // nil means time.Now
 
 	// settingsMu lets one settings change run at a time. A change reads the saved rules,
 	// merges the request into them and saves the result, so two requests that each change
@@ -82,6 +91,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/ignores", s.addIgnores)
 	mux.HandleFunc("DELETE /api/ignores", s.removeIgnores)
 	mux.HandleFunc("POST /api/plans", s.buildPlan)
+	mux.HandleFunc("POST /api/plans/{id}/execute", s.executePlan)
+	mux.HandleFunc("GET /api/actions", s.listActions)
 	return guard(mux, s.Config.Env().AllowedHosts)
 }
 
@@ -194,4 +205,15 @@ func (s *Server) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+// busy answers 409 with the job that holds the gate (spec 6.11). It reports whether err was
+// such a refusal.
+func busy(w http.ResponseWriter, err error) bool {
+	var b *gate.BusyError
+	if !errors.As(err, &b) {
+		return false
+	}
+	writeError(w, http.StatusConflict, b.Job)
+	return true
 }

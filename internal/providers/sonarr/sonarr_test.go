@@ -2,7 +2,9 @@ package sonarr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -23,6 +25,117 @@ func forSeries(t *testing.T, s string) http.HandlerFunc {
 			t.Errorf("%s requested for series %q; only series 1 has files", r.URL.Path, id)
 		}
 		fmt.Fprint(w, s)
+	}
+}
+
+// recorder serves Sonarr's write endpoints and records each request as
+// "METHOD path?query body".
+type recorder struct {
+	t      *testing.T
+	series string // body of GET /api/v3/series/1
+	got    []string
+}
+
+func (rec *recorder) server() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		line := r.Method + " " + r.URL.Path
+		if r.URL.RawQuery != "" {
+			line += "?" + r.URL.RawQuery
+		}
+		if len(b) > 0 {
+			line += " " + strings.TrimSpace(string(b))
+		}
+		rec.got = append(rec.got, line)
+		if r.Method == http.MethodGet && r.URL.Path == "/api/v3/series/1" {
+			fmt.Fprint(w, rec.series)
+		}
+	}))
+}
+
+func TestSonarrWriteRequests(t *testing.T) {
+	rec := &recorder{t: t}
+	srv := rec.server()
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	bg := context.Background()
+	if err := c.RemoveSeries(bg, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeleteEpisodeFiles(bg, []int{111, 112}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UnmonitorEpisodes(bg, []int{11, 12}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"DELETE /api/v3/series/1?addImportListExclusion=true&deleteFiles=true",
+		`DELETE /api/v3/episodefile/bulk {"episodeFileIds":[111,112]}`,
+		`PUT /api/v3/episode/monitor {"episodeIds":[11,12],"monitored":false}`,
+	}
+	if !reflect.DeepEqual(rec.got, want) {
+		t.Errorf("requests =\n%s\nwant\n%s", strings.Join(rec.got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestUnmonitorSeasonsChangesOnlyTheNamedSeasonsAndKeepsEveryOtherField(t *testing.T) {
+	rec := &recorder{t: t, series: `{"id":1,"title":"The Show","qualityProfileId":4,"unknownField":{"a":[1]},
+		"seasons":[{"seasonNumber":0,"monitored":false},{"seasonNumber":1,"monitored":true,"statistics":{"x":1}},{"seasonNumber":2,"monitored":true}]}`}
+	srv := rec.server()
+	defer srv.Close()
+	if err := New(srv.URL, "k", srv.Client()).UnmonitorSeasons(context.Background(), 1, []int{1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.got) != 2 || rec.got[0] != "GET /api/v3/series/1" || !strings.HasPrefix(rec.got[1], "PUT /api/v3/series/1 ") {
+		t.Fatalf("requests = %q, want a GET and a PUT of series 1", rec.got)
+	}
+	var sent struct {
+		Title            string          `json:"title"`
+		QualityProfileID int             `json:"qualityProfileId"`
+		Unknown          json.RawMessage `json:"unknownField"`
+		Seasons          []struct {
+			Number     int             `json:"seasonNumber"`
+			Monitored  bool            `json:"monitored"`
+			Statistics json.RawMessage `json:"statistics"`
+		} `json:"seasons"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(rec.got[1], "PUT /api/v3/series/1 ")), &sent); err != nil {
+		t.Fatal(err)
+	}
+	if sent.Title != "The Show" || sent.QualityProfileID != 4 || string(sent.Unknown) != `{"a":[1]}` {
+		t.Errorf("the series lost fields: %+v", sent)
+	}
+	monitored := map[int]bool{}
+	for _, s := range sent.Seasons {
+		monitored[s.Number] = s.Monitored
+	}
+	if !reflect.DeepEqual(monitored, map[int]bool{0: false, 1: false, 2: true}) || string(sent.Seasons[1].Statistics) != `{"x":1}` {
+		t.Errorf("seasons sent = %+v, want only season 1 changed", sent.Seasons)
+	}
+}
+
+func TestUnmonitorSeasonsRefusesASeasonSonarrDoesNotList(t *testing.T) {
+	rec := &recorder{t: t, series: `{"id":1,"seasons":[{"seasonNumber":1,"monitored":true}]}`}
+	srv := rec.server()
+	defer srv.Close()
+	err := New(srv.URL, "k", srv.Client()).UnmonitorSeasons(context.Background(), 1, []int{1, 3})
+	if err == nil || !strings.Contains(err.Error(), "season 3") {
+		t.Errorf("err = %v, want the missing season named", err)
+	}
+	if len(rec.got) != 1 {
+		t.Errorf("requests = %q, want no PUT", rec.got)
+	}
+}
+
+func TestUnmonitorSeasonsRefusesASeriesWithoutSeasons(t *testing.T) {
+	rec := &recorder{t: t, series: `{"id":1}`}
+	srv := rec.server()
+	defer srv.Close()
+	if err := New(srv.URL, "k", srv.Client()).UnmonitorSeasons(context.Background(), 1, []int{1}); err == nil {
+		t.Error("want an error for an answer without seasons")
+	}
+	if len(rec.got) != 1 {
+		t.Errorf("requests = %q, want no PUT", rec.got)
 	}
 }
 

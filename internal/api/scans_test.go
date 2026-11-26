@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/removarr/removarr/internal/domain"
+	"github.com/removarr/removarr/internal/gate"
 	"github.com/removarr/removarr/internal/scanner"
 	"github.com/removarr/removarr/internal/store"
 )
@@ -48,9 +49,14 @@ func TestStartScan(t *testing.T) {
 		t.Errorf("status = %d with %d scans started; want 202 and 1", rec.Code, h.scanner.started)
 	}
 
-	h.scanner.err = scanner.ErrRunning
+	h.scanner.err = &gate.BusyError{Job: gate.Scan}
 	if rec := h.do(http.MethodPost, "/api/scans", ""); rec.Code != http.StatusConflict {
 		t.Errorf("while running: status = %d, want 409", rec.Code)
+	}
+	h.scanner.err = &gate.BusyError{Job: gate.Plan}
+	rec = h.do(http.MethodPost, "/api/scans", "")
+	if rec.Code != http.StatusConflict || decode[errorBody](t, rec).Error != gate.Plan {
+		t.Errorf("while a plan is built: %d %s, want 409 naming the plan", rec.Code, rec.Body)
 	}
 
 	h.scanner.err = nil

@@ -18,7 +18,7 @@ Requires Go 1.27.
 |---|---|---|
 | `REMOVARR_PORT` | `7272` | Port the server listens on. |
 | `REMOVARR_CONFIG_DIR` | `/config` | Directory holding the SQLite database. |
-| `REMOVARR_DRY_RUN` | `false` | Reserved for deletions, which are not built yet. |
+| `REMOVARR_DRY_RUN` | `false` | With `true`, executing a plan sends nothing that changes an app and records a dry run in the history. |
 | `REMOVARR_ALLOWED_HOSTS` | | Host names removarr answers to, separated by commas. See below. |
 | `REMOVARR_JELLYFIN_URL`, `REMOVARR_JELLYFIN_API_KEY` | | Jellyfin connection. |
 | `REMOVARR_SONARR_URL`, `REMOVARR_SONARR_API_KEY` | | Sonarr connection. |
@@ -26,6 +26,8 @@ Requires Go 1.27.
 | `REMOVARR_QBITTORRENT_URL`, `REMOVARR_QBITTORRENT_USERNAME`, `REMOVARR_QBITTORRENT_PASSWORD` | | qBittorrent connection. |
 
 Connection settings saved through the API take priority over these variables.
+
+When removarr is stopped during an execution, it starts no further item and waits up to two minutes for the one it is running to finish and be recorded. Give it more than that before it is killed: Docker waits 10 seconds by default (`docker stop -t 130`), systemd 90 seconds (`TimeoutStopSec=130`).
 
 ## Trying the API
 
@@ -53,6 +55,15 @@ See what deleting rows would do. This builds a plan from live data and deletes n
 
     curl -X POST -H 'Content-Type: application/json' -H 'X-Removarr-Request: 1' \
       -d '{"rows":[{"list":"movies","key":"tmdb:603"}]}' localhost:7272/api/plans
+
+Carry out a plan, using the plan's `id` from the answer above. This deletes what the plan lists, so start with `REMOVARR_DRY_RUN=true` and compare the history with the plan first. A plan can be executed once, within ten minutes of being built, and executing it discards every other plan. A scan, a plan being built and an execution refuse each other with a 409:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'X-Removarr-Request: 1' \
+      -d '{}' localhost:7272/api/plans/<plan id>/execute
+
+List the history of what was done, newest first. `limit` is from 1 to 200 (default 50); when the answer has a `next`, pass it as `before` for the following page:
+
+    curl 'localhost:7272/api/actions?limit=20'
 
 removarr has no login. Run it only on a network you trust, and do not expose it to the internet.
 

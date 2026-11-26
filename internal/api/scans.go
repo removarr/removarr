@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
@@ -14,8 +13,7 @@ import (
 // startScan starts a scan in the background.
 func (s *Server) startScan(w http.ResponseWriter, r *http.Request) {
 	err := s.Scanner.Start()
-	if errors.Is(err, scanner.ErrRunning) {
-		writeError(w, http.StatusConflict, "A scan is already running.")
+	if busy(w, err) {
 		return
 	}
 	if err != nil {

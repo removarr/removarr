@@ -21,6 +21,8 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 | `internal/scan` | Every rule about what is a candidate, as pure functions. No I/O |
 | `internal/scanner` | Runs one scan: reads the apps, calls `scan`, stores the result |
 | `internal/planner` | Builds the plan for a deletion: reads and evaluates through `scanner`, then `Make` decides the items, steps and skips. Executes nothing |
+| `internal/executor` | Executes a stored plan item by item and records each in the history. The only code given the write interfaces |
+| `internal/gate` | Lets one job run at a time: scan, plan building or execution |
 | `internal/providers/*`, `internal/httpjson` | One client per app. They translate an API into `domain` types and decide nothing |
 | `internal/store` | SQLite: settings, scans, candidates. Migrations in `internal/store/migrations` |
 | `internal/config` | Environment variables and saved settings; saved settings take priority |
@@ -37,7 +39,7 @@ The checks. All of them must pass:
 gofmt -l .        # must print nothing
 go vet ./...
 go test ./...
-go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/ ./internal/planner/
+go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/ ./internal/planner/ ./internal/executor/ ./internal/gate/
 go build ./...
 ```
 
@@ -52,7 +54,7 @@ REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
 ## Rules for the code
 
 - **Dependencies:** Go 1.27 and the standard library. The only third-party module is `modernc.org/sqlite`. Adding one is the owner's decision.
-- **No deleting call yet.** Until issue #5, removarr sends only GET requests to the apps, plus the qBittorrent login. Do not add a call that changes anything in an app outside that issue.
+- **Only the executor changes an app.** `internal/executor` is the only code given the write interfaces (`providers.MovieWriter`, `SeriesWriter`, `DownloadRemover`). The scanner and the planner send GET requests only, plus the qBittorrent login. With `REMOVARR_DRY_RUN=true` nothing but GET, plus the qBittorrent login, reaches an app.
 - **No guessing from a partial answer** (spec 6.8, rule 5). If an app's answer is incomplete or inconsistent, return an error so the list shows it. Do not fill in a default.
 - **Secrets are write-only.** API keys and the qBittorrent password are never returned, logged or put into an error. An error about a URL never repeats the URL.
 - **Outbound requests** use an HTTP client with `httpjson.SameHostRedirects`.

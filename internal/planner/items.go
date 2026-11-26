@@ -138,7 +138,10 @@ func shares(o domain.Candidate, members []domain.Candidate) []string {
 }
 
 // steps returns the media manager steps of an item's rows (spec 6.7). A library file that two
-// rows of the item delete is deleted once.
+// rows of the item delete is deleted once. Each step names the row it belongs to. Every
+// unmonitor step of the item comes first, in row order, then every other step in row order:
+// a failed deletion then leaves files that are not downloaded again, never deleted episodes
+// that are, also when one row deletes a file that holds another row's episode.
 func (m *maker) steps(members []domain.Candidate) []domain.ManagerStep {
 	steps := []domain.ManagerStep{}
 	deleted := map[int]bool{} // episode files already in a step of this item
@@ -147,12 +150,12 @@ func (m *maker) steps(members []domain.Candidate) []domain.ManagerStep {
 		switch {
 		case c.List == domain.ListMovies:
 			steps = append(steps, domain.ManagerStep{
-				Manager: scan.ManagerMovies, Action: domain.StepRemoveMovie, ItemID: row.ManagerID,
+				Manager: scan.ManagerMovies, Action: domain.StepRemoveMovie, ItemID: row.ManagerID, RowKey: c.Key,
 				AddExclusion: m.in.Rules.AddExclusionOnDelete,
 			})
 		case c.Scope == domain.ScopeSeries && !c.StillAiring:
 			steps = append(steps, domain.ManagerStep{
-				Manager: scan.ManagerSeries, Action: domain.StepRemoveSeries, ItemID: row.ManagerID,
+				Manager: scan.ManagerSeries, Action: domain.StepRemoveSeries, ItemID: row.ManagerID, RowKey: c.Key,
 				AddExclusion: m.in.Rules.AddExclusionOnDelete,
 			})
 		default:
@@ -164,18 +167,23 @@ func (m *maker) steps(members []domain.Candidate) []domain.ManagerStep {
 					files = append(files, f)
 				}
 			}
-			if len(files) > 0 {
-				steps = append(steps, domain.ManagerStep{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: row.ManagerID, FileIDs: files})
-			}
 			if episodes := sortedInts(row.ItemIDs); len(episodes) > 0 {
-				steps = append(steps, domain.ManagerStep{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: row.ManagerID, EpisodeIDs: episodes})
+				steps = append(steps, domain.ManagerStep{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorEpisodes, ItemID: row.ManagerID, RowKey: c.Key, EpisodeIDs: episodes})
 			}
 			if seasons := m.finishedSeasons(row); len(seasons) > 0 {
-				steps = append(steps, domain.ManagerStep{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: row.ManagerID, Seasons: seasons})
+				steps = append(steps, domain.ManagerStep{Manager: scan.ManagerSeries, Action: domain.StepUnmonitorSeasons, ItemID: row.ManagerID, RowKey: c.Key, Seasons: seasons})
+			}
+			if len(files) > 0 {
+				steps = append(steps, domain.ManagerStep{Manager: scan.ManagerSeries, Action: domain.StepDeleteEpisodeFiles, ItemID: row.ManagerID, RowKey: c.Key, FileIDs: files})
 			}
 		}
 	}
+	sort.SliceStable(steps, func(i, j int) bool { return unmonitors(steps[i]) && !unmonitors(steps[j]) })
 	return steps
+}
+
+func unmonitors(s domain.ManagerStep) bool {
+	return s.Action == domain.StepUnmonitorEpisodes || s.Action == domain.StepUnmonitorSeasons
 }
 
 // finishedSeasons returns the regular seasons of a row's episodes that have finished airing:
