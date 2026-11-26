@@ -44,18 +44,25 @@ export function useActions() {
   });
 }
 
-// useScanFinishedRefresh reloads the lists and the status when a scan goes from running to
-// finished, so the page shows the new lists without a manual reload.
-export function useScanFinishedRefresh(running: boolean | undefined) {
+// useScanFinishedRefresh reloads the lists and the status when a scan finishes, so the page
+// shows the new lists without a manual reload. A scan has finished when the status goes from
+// running to not running, or when the last scan changes: a quick scan can be over before the
+// status is read again, so the status never shows it running. lastScanId is undefined until
+// the status is known and null while there is no scan.
+export function useScanFinishedRefresh(running: boolean | undefined, lastScanId: number | null | undefined) {
   const qc = useQueryClient();
   const was = useRef(running);
+  const wasLast = useRef(lastScanId);
   useEffect(() => {
-    if (was.current === true && running === false) {
+    const stopped = was.current === true && running === false;
+    const newScan = wasLast.current !== undefined && lastScanId !== undefined && lastScanId !== wasLast.current;
+    if (stopped || newScan) {
       qc.invalidateQueries({ queryKey: keys.candidates });
       qc.invalidateQueries({ queryKey: keys.status });
     }
     was.current = running;
-  }, [running, qc]);
+    wasLast.current = lastScanId;
+  }, [running, lastScanId, qc]);
 }
 
 // useStartScan starts a scan. It is never retried on its own: a 409 means another job runs.

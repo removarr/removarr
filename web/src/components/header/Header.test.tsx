@@ -183,4 +183,34 @@ describe("the header", () => {
     await screen.findByRole("button", { name: "Scan" });
     await waitFor(() => expect(m.count("GET /api/candidates")).toBe(2));
   });
+
+  it("reloads the lists when a scan finished before the status showed it running", async () => {
+    // A quick scan is over by the time the status is read again: the status never shows it
+    // running, only a new last scan.
+    let last: Status["lastScan"] = null;
+    const m = mockApi({
+      "GET /api/status": () => ({ status: 200, body: status({ lastScan: last }) }),
+      "POST /api/scans": () => {
+        last = status().lastScan;
+        return { status: 202, body: { status: { running: true }, last: null } };
+      },
+      "GET /api/candidates": () => ({ status: 200, body: {} }),
+    });
+    function Probe() {
+      useQuery({ queryKey: ["candidates", "movies", false], queryFn: () => fetch("/api/candidates").then((r) => r.json()) });
+      return null;
+    }
+    renderWithProviders(
+      <>
+        <Header />
+        <Probe />
+      </>,
+    );
+    expect(await screen.findByText("No scan yet")).toBeInTheDocument();
+    await waitFor(() => expect(m.count("GET /api/candidates")).toBe(1));
+
+    await userEvent.click(screen.getByRole("button", { name: "Scan" }));
+    expect(await screen.findByText(`Last scan ${formatDateTime(FINISHED)}`)).toBeInTheDocument();
+    await waitFor(() => expect(m.count("GET /api/candidates")).toBe(2));
+  });
 });

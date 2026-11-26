@@ -34,7 +34,7 @@ export function Header() {
   const { data: status } = useStatus();
   const start = useStartScan();
   const base = useId();
-  useScanFinishedRefresh(status?.scan.running);
+  useScanFinishedRefresh(status?.scan.running, status ? (status.lastScan?.id ?? null) : undefined);
 
   const running = status?.scan.running ?? false;
   // A refusal message is about the state it was shown in: drop it when that state changes.
