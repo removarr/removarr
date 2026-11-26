@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c. 2026-11-24: how a plan is executed and recorded (6.7, 6.8, 6.11, 7.1, 7.2, 7.4, 7.5, 7.6, 8, 16.2), decided from the principles while building stage 2d. 2026-11-26: selection and sorting (5.3), out-of-date lists (5.4, 7.6), testing a connection (5.6), what the status reports (7.6), how the UI is served (7.7), refused host names, reverse proxies and framing (10) and the frontend libraries (15), decided from the principles while building stage 3.
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c. 2026-11-24: how a plan is executed and recorded (6.7, 6.8, 6.11, 7.1, 7.2, 7.4, 7.5, 7.6, 8, 16.2), decided from the principles while building stage 2d. 2026-11-26: selection and sorting (5.3), out-of-date lists (5.4, 7.6), testing a connection (5.6), what the status reports (7.6), how the UI is served (7.7), refused host names, reverse proxies and framing (10) and the frontend libraries (15), decided from the principles while building stage 3; navigation, the bulk bar and the settings pages (7.7), at the owner's request.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -431,10 +431,11 @@ One SQLite file in the config directory.
 
 ### 7.7 Web UI
 
-- **Pages:** Movies, Series, Torrents, History, Settings.
-- **Header:** Scan button, last scan time and summary, free space.
-- **Lists:** a table on wide screens and cards on narrow ones, with a bulk bar that stays visible while rows are selected.
-- **First run:** with no connections configured, the lists point the user to Settings.
+- **Pages:** Movies, Series, Torrents, History, Settings. Settings has three sub-pages, each with its own heading: Connections (with the dry run notice), Counting users and Rules. `/settings` opens Connections.
+- **Navigation:** a side panel on the left, with an icon and a label per page; the label is the link's name. The Settings sub-pages are nested below Settings and always shown with it. The current page is marked, and Settings is marked while one of its sub-pages is shown. A button in the header hides and shows the panel. On a wide screen the panel is shown by default beside the content, and the browser remembers whether it was hidden; a browser that cannot store it shows the panel. On a narrow screen the panel is hidden by default and opens as a drawer over the content, which Escape, a click beside it or a chosen page closes.
+- **Header:** the menu button, Scan button, last scan time and summary, free space.
+- **Lists:** a table on wide screens and cards on narrow ones. While rows are selected a bulk bar is fixed at the bottom of the window, over the width of the content and never over the side panel, and the list leaves room below its last row so that no row is hidden behind the bar.
+- **First run:** with no connections configured, the lists point the user to Settings, Connections.
 - **Theme:** follows the system light or dark setting.
 - **Serving:** the server serves the UI's files at every path outside `/api/`, and the UI's page for any path it does not hold, so a page of the UI can be reloaded. A path under `assets/`, or one whose last part has a file extension, names a file and never a page of the UI: when the file is missing the answer is "not found". A binary built without the UI answers those paths with a page that says so.
 
