@@ -189,7 +189,10 @@ Do not merge. Do not start the next issue.
 
 ## After the merge
 
-The owner merges, or tells the agent to. Use a merge commit, never squash or rebase: the issues and the replies in review threads name commits, and those must stay valid. Afterwards check that the issue is closed and that no thread is open.
+The owner merges, or tells the agent to. Use a merge commit, never squash or rebase: the issues and the replies in review threads name commits, and those must stay valid. Afterwards:
+
+- Check that the issue is closed and that no thread is open.
+- Pull `main` in the main checkout, the one that is not a worktree: `git -C <main checkout> pull --ff-only origin main`. The next run then starts from what was merged. If that checkout is not on `main` or has changes that are not committed, do not touch it; tell the owner instead. If the pull cannot fast-forward, stop and tell the owner; never merge or rebase to make it fit.
 
 ## When to stop and ask
 
