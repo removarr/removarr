@@ -40,7 +40,7 @@ Each is the newest release at least two weeks old on 2026-11-26.
 | @types/react, @types/react-dom | 19.3.0 | dev |
 | @types/node | 26.6.6 | dev |
 | @tanstack/react-query | 5.107.1 | runtime |
-| @tanstack/react-table | 9.3.1 | runtime |
+| @tanstack/react-table | 9.3.1 | not used (task 5) |
 | react-router | 8.5.1 | runtime |
 | radix-ui | 1.8.1 | runtime (shadcn/ui) |
 | lucide-react | 1.72.0 | runtime (shadcn/ui icons) |

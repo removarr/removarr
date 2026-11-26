@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c. 2026-11-24: how a plan is executed and recorded (6.7, 6.8, 6.11, 7.1, 7.2, 7.4, 7.5, 7.6, 8, 16.2), decided from the principles while building stage 2d. 2026-11-26: selection and sorting (5.3), out-of-date lists (5.4, 7.6), testing a connection (5.6), what the status reports (7.6), how the UI is served (7.7) and refused host names and reverse proxies (10), decided from the principles while building stage 3.
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c. 2026-11-24: how a plan is executed and recorded (6.7, 6.8, 6.11, 7.1, 7.2, 7.4, 7.5, 7.6, 8, 16.2), decided from the principles while building stage 2d. 2026-11-26: selection and sorting (5.3), out-of-date lists (5.4, 7.6), testing a connection (5.6), what the status reports (7.6), how the UI is served (7.7), refused host names and reverse proxies (10) and the frontend libraries (15), decided from the principles while building stage 3.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -529,7 +529,7 @@ Approved by the owner on 2026-11-18. Versions are pinned in the implementation p
 | SQLite | `modernc.org/sqlite`, plain SQL, embedded migration files | Pure Go, so arm64 and amd64 builds need no C toolchain. |
 | App clients | Thin hand-written clients for Jellyfin, Sonarr, Radarr and qBittorrent | Only a few endpoints each, and exact control over the fields the rules depend on. |
 | Frontend base | Vite, React, TypeScript, Tailwind CSS, shadcn/ui | Chosen by the owner. |
-| Frontend libraries | TanStack Query, TanStack Table, React Router | shadcn's data table is built on TanStack Table. |
+| Frontend libraries | TanStack Query, React Router | Lists keep their selection in plain state: TanStack Table's row selection keeps rows the filter hides, which 5.3 forbids. |
 | Tooling and tests | pnpm; Go `testing`; Vitest; Playwright for the end-to-end test | Common, well-known defaults. |
 | Container | Multi-stage build, distroless base image, non-root user | Small image with nothing extra inside. |
 | CI and releases | GitHub Actions; image on `ghcr.io/removarr/removarr` | Free for public repositories and lives with the code. |
