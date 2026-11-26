@@ -153,11 +153,11 @@ describe("the candidate list", () => {
     const { user } = setup([alpha, beta, gamma]);
     expect(shownTitles()).toEqual(["Alpha", "Gamma", "Beta"]);
     await sortBy(user, "Title");
-    await user.click(screen.getByRole("button", { name: "Descending" }));
-    expect(screen.getByRole("button", { name: "Ascending" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Sort ascending" }));
+    expect(screen.getByRole("button", { name: "Sort descending" })).toBeInTheDocument();
     expect(shownTitles()).toEqual(["Alpha", "Beta", "Gamma"]);
     await sortBy(user, "Size");
-    await user.click(screen.getByRole("button", { name: "Ascending" }));
+    await user.click(screen.getByRole("button", { name: "Sort descending" }));
     expect(shownTitles()).toEqual(["Alpha", "Gamma", "Beta"]);
   });
 
@@ -165,7 +165,7 @@ describe("the candidate list", () => {
     const { user } = setup([alpha, beta, gamma]);
     await sortBy(user, "Watched");
     expect(shownTitles()).toEqual(["Alpha", "Gamma", "Beta"]);
-    await user.click(screen.getByRole("button", { name: "Descending" }));
+    await user.click(screen.getByRole("button", { name: "Sort ascending" }));
     expect(shownTitles()).toEqual(["Beta", "Gamma", "Alpha"]);
   });
 
@@ -205,7 +205,7 @@ describe("the candidate list", () => {
   it("expands a row to show its torrents", async () => {
     const { user } = setup([alpha], { renderExpanded: (r) => <p>torrents of {r.title}</p> });
     expect(screen.queryByText("torrents of Alpha")).not.toBeInTheDocument();
-    const expand = screen.getByRole("button", { name: "Show torrents" });
+    const expand = screen.getByRole("button", { name: "Show torrents of Alpha" });
     expect(expand).toHaveAttribute("aria-expanded", "false");
     await user.click(expand);
     expect(screen.getByText("torrents of Alpha")).toBeInTheDocument();
@@ -225,8 +225,22 @@ describe("the candidate list", () => {
     expect(screen.getByText("Beta")).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Select Beta" }));
     expect(bar()).toHaveTextContent("1 selected · 1.0 GiB");
-    await user.click(screen.getAllByRole("button", { name: "Show torrents" })[0]);
+    await user.click(screen.getByRole("button", { name: "Show torrents of Alpha" }));
     expect(screen.getByText("torrents of Alpha")).toBeInTheDocument();
+  });
+
+  it("names each season row with its season, so two seasons of one series are selected apart", async () => {
+    const s1 = row("series:7:1", "Epsilon", GiB, { list: "series", scope: "season", season: 1 });
+    const s2 = row("series:7:2", "Epsilon", 2 * GiB, { list: "series", scope: "season", season: 2 });
+    const { user, onDelete } = setup([s1, s2], { renderExpanded: (r) => <p>torrents of season {r.season}</p> });
+    await user.click(screen.getByRole("checkbox", { name: "Select Epsilon, season 2" }));
+    expect(screen.getByRole("checkbox", { name: "Select Epsilon, season 1" })).not.toBeChecked();
+    expect(bar()).toHaveTextContent("1 selected · 2.0 GiB");
+    await user.click(within(bar()!).getByRole("button", { name: "Delete" }));
+    expect(onDelete).toHaveBeenCalledWith([s2.key]);
+    await user.click(screen.getByRole("button", { name: "Show torrents of Epsilon, season 1" }));
+    expect(screen.getByText("torrents of season 1")).toBeInTheDocument();
+    expect(screen.queryByText("torrents of season 2")).not.toBeInTheDocument();
   });
 
   it("renders a table on a wide screen", () => {

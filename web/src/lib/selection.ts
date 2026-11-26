@@ -5,6 +5,12 @@ import type { Candidate } from "@/api/types";
 // so that a bulk action never names a row that is hidden or gone.
 export type Selection = ReadonlySet<string>;
 
+// rowLabel names a row for the controls that act on it. Season rows of one series carry the
+// series title, so a row with a season adds it; otherwise two rows would share one name.
+export function rowLabel(row: Candidate): string {
+  return row.season === undefined ? row.title : `${row.title}, season ${row.season}`;
+}
+
 // selectAll selects every visible row, and nothing else.
 export function selectAll(visible: Candidate[]): Selection {
   return new Set(visible.map((r) => r.key));

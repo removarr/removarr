@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { prune, selectAll, selectedRows, toggle, totalSize, type Selection } from "@/lib/selection";
+import { prune, rowLabel, selectAll, selectedRows, toggle, totalSize, type Selection } from "@/lib/selection";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { cn } from "@/lib/utils";
 import { BulkBar } from "./BulkBar";
@@ -93,14 +93,15 @@ export function CandidateList({ rows, columns, sortKeys, renderCard, renderExpan
   const headerState = allSelected ? true : selected.length > 0 ? "indeterminate" : false;
   const clear = () => setSelection(new Set());
   const toggleAll = () => setSelection(allSelected ? new Set() : selectAll(shown));
-  const toggleRow = (key: string) => setSelection(toggle(sel, key));
+  const toggleRow = (key: string) => setSelection((s) => toggle(s, key));
+  const nextDirectionLabel = direction === "asc" ? "Sort descending" : "Sort ascending";
   const toggleExpanded = (key: string) => setExpanded((e) => toggle(e, key));
 
   if (rows.length === 0) return <p className="py-8 text-center text-sm text-muted-foreground">{emptyText}</p>;
 
   const rowBox = (row: Candidate, className?: string) => (
     <Checkbox
-      aria-label={`Select ${row.title}`}
+      aria-label={`Select ${rowLabel(row)}`}
       checked={sel.has(row.key)}
       onCheckedChange={() => toggleRow(row.key)}
       className={className}
@@ -114,7 +115,7 @@ export function CandidateList({ rows, columns, sortKeys, renderCard, renderExpan
       type="button"
       variant="ghost"
       size="icon-sm"
-      aria-label="Show torrents"
+      aria-label={`Show torrents of ${rowLabel(row)}`}
       aria-expanded={expanded.has(row.key)}
       onClick={() => toggleExpanded(row.key)}
     >
@@ -143,9 +144,16 @@ export function CandidateList({ rows, columns, sortKeys, renderCard, renderExpan
             ))}
           </SelectContent>
         </Select>
-        <Button type="button" variant="outline" onClick={() => setDirection((d) => (d === "asc" ? "desc" : "asc"))}>
+        {/* The icon shows the current direction; the name says what a click does. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label={nextDirectionLabel}
+          title={nextDirectionLabel}
+          onClick={() => setDirection((d) => (d === "asc" ? "desc" : "asc"))}
+        >
           {direction === "asc" ? <ArrowUpNarrowWide /> : <ArrowDownWideNarrow />}
-          {direction === "asc" ? "Ascending" : "Descending"}
         </Button>
       </div>
 

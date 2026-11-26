@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prune, selectAll, selectedRows, toggle, totalSize } from "./selection";
+import { prune, rowLabel, selectAll, selectedRows, toggle, totalSize } from "./selection";
 import type { Candidate } from "@/api/types";
 
 const row = (key: string, size: number): Candidate =>
@@ -21,5 +21,10 @@ describe("selection", () => {
     const rows = selectedRows(new Set(["c", "a"]), [a, b, c]);
     expect(rows.map((r) => r.key)).toEqual(["a", "c"]);
     expect(totalSize(rows)).toBe(5);
+  });
+  it("labels a row by its title, and a season row also by its season", () => {
+    expect(rowLabel(a)).toBe("a");
+    expect(rowLabel({ ...a, list: "series", scope: "season", season: 3 })).toBe("a, season 3");
+    expect(rowLabel({ ...a, list: "series", scope: "season", season: 0 })).toBe("a, season 0");
   });
 });
