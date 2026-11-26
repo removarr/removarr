@@ -5,7 +5,7 @@ import { Shell } from "@/components/layout/Shell";
 import { HistoryPage } from "@/pages/HistoryPage";
 import { MoviesPage } from "@/pages/MoviesPage";
 import { SeriesPage } from "@/pages/SeriesPage";
-import { SettingsPage } from "@/pages/SettingsPage";
+import { ConnectionsPage, CountingUsersPage, RulesPage } from "@/pages/SettingsPage";
 import { TorrentsPage } from "@/pages/TorrentsPage";
 
 // routes are exported so that tests can mount them in a memory router.
@@ -18,7 +18,15 @@ export const routes: RouteObject[] = [
       { path: "series", element: <SeriesPage /> },
       { path: "torrents", element: <TorrentsPage /> },
       { path: "history", element: <HistoryPage /> },
-      { path: "settings", element: <SettingsPage /> },
+      {
+        path: "settings",
+        children: [
+          { index: true, element: <Navigate to="/settings/connections" replace /> },
+          { path: "connections", element: <ConnectionsPage /> },
+          { path: "counting-users", element: <CountingUsersPage /> },
+          { path: "rules", element: <RulesPage /> },
+        ],
+      },
     ],
   },
 ];

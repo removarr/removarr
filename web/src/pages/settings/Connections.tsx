@@ -69,7 +69,6 @@ export function Connections({ settings }: { settings: Settings }) {
 
   return (
     <section aria-label="Connections" className="space-y-4">
-      <h2 className="text-lg font-semibold">Connections</h2>
       {/* A save that succeeds drops the edits, so nothing can be typed while it is pending. */}
       <fieldset disabled={save.isPending} className="grid min-w-0 gap-4 md:grid-cols-2">
         {APPS.map((a) => (

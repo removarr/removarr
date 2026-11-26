@@ -33,7 +33,7 @@ describe("ListPage", () => {
     mockApi(routes(status(false), { list: "movies", scannedAt: null, candidates: null }));
     renderWithProviders(<ListPage list="movies" />);
     expect(await screen.findByText("removarr is not connected to any app yet.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings/connections");
   });
 
   it("shows the list's error, no rows and no select-all box", async () => {

@@ -36,7 +36,18 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
     const bar = page.getByRole("region", { name: "Selected rows" });
     const showIgnored = page.getByRole("switch", { name: "Show ignored" });
 
+    await expect(bar).toHaveCount(0);
     await page.getByRole("checkbox", { name: "Select Fake Movie Two" }).check();
+    // The bar is fixed to the bottom of the window, beside the side panel and not over it,
+    // and the list is padded so that its last row stays above the bar.
+    await expect(bar).toHaveCSS("position", "fixed");
+    const panel = await page.getByRole("navigation", { name: "Main" }).boundingBox();
+    const barBox = await bar.boundingBox();
+    expect(barBox!.x).toBeGreaterThanOrEqual(panel!.x + panel!.width - 1);
+    expect(barBox!.y + barBox!.height).toBeCloseTo(page.viewportSize()!.height, 0);
+    await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)");
+    const last = await rows(page).last().boundingBox();
+    expect(last!.y + last!.height).toBeLessThanOrEqual((await bar.boundingBox())!.y);
     await bar.getByRole("button", { name: "Ignore", exact: true }).click();
     await expect(rows(page)).toHaveCount(1);
     await expect(page.getByRole("checkbox", { name: "Select Fake Movie Two" })).toHaveCount(0);
@@ -90,9 +101,56 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
 
   await test.step("the settings show where Jellyfin's connection comes from, and test it", async () => {
     await nav(page, "Settings").click();
+    await expect(page).toHaveURL(/\/settings\/connections$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Connections" })).toBeVisible();
+    await expect(nav(page, "Connections")).toHaveAttribute("aria-current", "page");
     const jellyfin = page.getByRole("group", { name: "Jellyfin" });
     await expect(jellyfin.getByText("From the environment").first()).toBeVisible();
     await jellyfin.getByRole("button", { name: "Test" }).click();
     await expect(jellyfin.getByRole("status")).toHaveText("Connected: fake");
+  });
+
+  await test.step("the counting users and the rules are pages of their own", async () => {
+    await nav(page, "Counting users").click();
+    await expect(page).toHaveURL(/\/settings\/counting-users$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Counting users" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Counting users" })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Jellyfin" })).toHaveCount(0);
+
+    await nav(page, "Rules").click();
+    await expect(page).toHaveURL(/\/settings\/rules$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Rules" })).toBeVisible();
+    await expect(page.getByLabel("Grace period (days)")).toBeVisible();
+    await expect(nav(page, "Settings")).toHaveAttribute("aria-current", "true");
+  });
+
+  await test.step("the side panel hides, and stays hidden after a reload", async () => {
+    await page.getByRole("button", { name: "Hide menu" }).click();
+    await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1, name: "Rules" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
+    await page.getByRole("button", { name: "Show menu" }).click();
+    await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  });
+
+  await test.step("on a narrow screen the menu is a drawer that closes when a page is chosen", async () => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    const menu = page.getByRole("navigation", { name: "Main" });
+    await expect(menu).toBeHidden();
+    await page.getByRole("button", { name: "Show menu" }).click();
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await page.getByRole("button", { name: "Show menu" }).click();
+    await nav(page, "Movies").click();
+    await expect(page.getByRole("heading", { level: 1, name: "Movies" })).toBeVisible();
+    await expect(menu).toBeHidden();
+
+    // On a narrow screen the bar spans the whole width.
+    await page.getByRole("checkbox", { name: "Select Fake Movie Two" }).check();
+    const bar = await page.getByRole("region", { name: "Selected rows" }).boundingBox();
+    expect(bar!.x).toBe(0);
+    expect(bar!.width).toBeCloseTo(390, 0);
   });
 });

@@ -4,6 +4,7 @@ import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { vi } from "vitest";
+import { routes } from "@/App";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // renderWithProviders mounts the UI in a fresh query client (no retries, so a failure shows
@@ -24,7 +25,23 @@ export function renderWithProviders(ui: ReactElement, opts: { route?: string } =
   return { ...result, queryClient, router };
 }
 
-export type MockResponse = { status: number; body?: unknown };
+// renderApp mounts the app's own routes at a path, with the shell around the page, so a test
+// sees the navigation and the redirects as the browser does.
+export function renderApp(path: string) {
+  const queryClient = makeQueryClient();
+  queryClient.setDefaultOptions({ ...queryClient.getDefaultOptions(), queries: { retry: false } });
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
+  const result = render(
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
+    </QueryClientProvider>,
+  );
+  return { ...result, queryClient, router };
+}
+
+export type MockResponse ={ status: number; body?: unknown };
 // A route may answer later: a test that must see a state while a request is pending returns a
 // promise and resolves it when it is done looking.
 export type MockRoutes = Record<string, (init: RequestInit) => MockResponse | Promise<MockResponse>>;

@@ -97,7 +97,6 @@ export function Rules({ settings }: { settings: Settings }) {
 
   return (
     <section aria-label="Rules" className="space-y-4">
-      <h2 className="text-lg font-semibold">Rules</h2>
       {/* A save that succeeds drops the edits, so nothing can be typed while it is pending. */}
       <fieldset disabled={save.isPending} className="min-w-0 space-y-4">
         <div className="grid gap-4 md:grid-cols-2">

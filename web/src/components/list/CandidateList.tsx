@@ -1,5 +1,5 @@
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChevronRight } from "lucide-react";
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { Candidate } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -66,6 +66,19 @@ export function CandidateList({ rows, columns, sortKeys, renderCard, renderExpan
   const [selection, setSelection] = useState<Selection>(() => new Set());
   const [expanded, setExpanded] = useState<Selection>(() => new Set());
 
+  // The bulk bar is fixed to the window, so it would cover the last rows. While it is shown the
+  // list is padded by its height, measured whenever it changes (it wraps on a narrow screen).
+  const [barHeight, setBarHeight] = useState(0);
+  const barRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const measure = () => setBarHeight(el.getBoundingClientRect().height);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return needle === "" ? rows : rows.filter((r) => matches(r, needle));
@@ -96,6 +109,8 @@ export function CandidateList({ rows, columns, sortKeys, renderCard, renderExpan
   const toggleRow = (key: string) => setSelection((s) => toggle(s, key));
   const nextDirectionLabel = direction === "asc" ? "Sort descending" : "Sort ascending";
   const toggleExpanded = (key: string) => setExpanded((e) => toggle(e, key));
+  const padding: CSSProperties | undefined =
+    selected.length > 0 ? { paddingBottom: `calc(${barHeight}px + 1rem)` } : undefined;
 
   if (rows.length === 0) return <p className="py-8 text-center text-sm text-muted-foreground">{emptyText}</p>;
 
@@ -124,7 +139,7 @@ export function CandidateList({ rows, columns, sortKeys, renderCard, renderExpan
   );
 
   return (
-    <div className="flex flex-col gap-3">
+    <div data-testid="candidate-list" className="flex flex-col gap-3" style={padding}>
       <div className="flex flex-wrap items-center gap-2">
         <Input
           type="search"
@@ -215,7 +230,7 @@ export function CandidateList({ rows, columns, sortKeys, renderCard, renderExpan
       )}
 
       {selected.length > 0 && (
-        <BulkBar count={selected.length} size={totalSize(selected)} onClear={clear}>
+        <BulkBar ref={barRef} count={selected.length} size={totalSize(selected)} onClear={clear}>
           {actions(selected, clear)}
         </BulkBar>
       )}

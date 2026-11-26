@@ -2,8 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { Settings } from "@/api/types";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { mockApi, renderWithProviders } from "@/test/render";
+import { mockApi, renderApp } from "@/test/render";
 
 const SETTINGS = "GET /api/settings";
 const PUT = "PUT /api/settings";
@@ -32,6 +31,11 @@ function settingsFixture(over: Partial<Settings> = {}): Settings {
 }
 
 const ok = (body: unknown) => () => ({ status: 200, body });
+
+// Each section is a page of its own; the shell around it reads the status.
+const shell = {
+  "GET /api/status": ok({ dryRun: true, connections: {}, scan: { running: false }, lastScan: null, stale: false }),
+};
 const bodyOf = (calls: { init: RequestInit }[]) => JSON.parse(String(calls[0].init.body));
 
 // A route that records the body of each request.
@@ -43,8 +47,8 @@ function recorder(answer: (body: unknown) => { status: number; body?: unknown })
 describe("SettingsPage connections", () => {
   it("saving a changed URL sends that URL only", async () => {
     const put = recorder(() => ({ status: 200, body: settingsFixture() }));
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
+    renderApp("/settings/connections");
     const sonarr = await screen.findByRole("group", { name: "Sonarr" });
     const url = within(sonarr).getByLabelText("URL");
     await userEvent.clear(url);
@@ -57,8 +61,8 @@ describe("SettingsPage connections", () => {
 
   it("never renders a secret, shows its source and does not send an empty secret input", async () => {
     const put = recorder(() => ({ status: 200, body: settingsFixture() }));
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
+    renderApp("/settings/connections");
     const sonarr = await screen.findByRole("group", { name: "Sonarr" });
     const key = within(sonarr).getByLabelText("API key") as HTMLInputElement;
     expect(key.value).toBe("");
@@ -80,8 +84,8 @@ describe("SettingsPage connections", () => {
 
   it("clears a saved API key with null", async () => {
     const put = recorder(() => ({ status: 200, body: settingsFixture() }));
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
+    renderApp("/settings/connections");
     const radarr = await screen.findByRole("group", { name: "Radarr" });
     // The key from the environment has no clear button; the saved one has.
     const sonarr = screen.getByRole("group", { name: "Sonarr" });
@@ -93,13 +97,13 @@ describe("SettingsPage connections", () => {
   });
 
   it("disables Test with a hint after an edit, enables it after the save and shows the answer", async () => {
-    mockApi({
+    mockApi({ ...shell,
       [SETTINGS]: ok(settingsFixture()),
       [PUT]: ok(settingsFixture()),
       [USERS]: ok([]),
       "POST /api/connections/sonarr/test": ok({ ok: true, detail: "Sonarr 4.0.12" }),
     });
-    renderWithProviders(<SettingsPage />);
+    renderApp("/settings/connections");
     const sonarr = await screen.findByRole("group", { name: "Sonarr" });
     const test = within(sonarr).getByRole("button", { name: "Test" });
     expect(test).toBeEnabled();
@@ -113,24 +117,24 @@ describe("SettingsPage connections", () => {
   });
 
   it("shows the error a failed test answers", async () => {
-    mockApi({
+    mockApi({ ...shell,
       [SETTINGS]: ok(settingsFixture()),
       [USERS]: ok([]),
       "POST /api/connections/radarr/test": ok({ ok: false, error: "Radarr refused the API key." }),
     });
-    renderWithProviders(<SettingsPage />);
+    renderApp("/settings/connections");
     const radarr = await screen.findByRole("group", { name: "Radarr" });
     await userEvent.click(within(radarr).getByRole("button", { name: "Test" }));
     expect(await within(radarr).findByText("Radarr refused the API key.")).toBeInTheDocument();
   });
 
   it("shows a refused connection field next to it", async () => {
-    mockApi({
+    mockApi({ ...shell,
       [SETTINGS]: ok(settingsFixture()),
       [USERS]: ok([]),
       [PUT]: () => ({ status: 400, body: { error: "must be an http or https address", field: "connections.sonarr.url" } }),
     });
-    renderWithProviders(<SettingsPage />);
+    renderApp("/settings/connections");
     const sonarr = await screen.findByRole("group", { name: "Sonarr" });
     await userEvent.type(within(sonarr).getByLabelText("URL"), "x");
     await userEvent.click(screen.getByRole("button", { name: "Save connections" }));
@@ -138,8 +142,8 @@ describe("SettingsPage connections", () => {
   });
 
   it("keeps browser autofill out: secrets ask for a new password, the user name has its own name", async () => {
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    renderApp("/settings/connections");
     const qb = await screen.findByRole("group", { name: "qBittorrent" });
     expect(within(qb).getByLabelText("Password")).toHaveAttribute("autocomplete", "new-password");
     expect(within(qb).getByLabelText("User name")).toHaveAttribute("autocomplete", "off");
@@ -151,8 +155,8 @@ describe("SettingsPage connections", () => {
   });
 
   it("does not count an edit equal to the shown value as a change", async () => {
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    renderApp("/settings/connections");
     const qb = await screen.findByRole("group", { name: "qBittorrent" });
     await userEvent.type(within(qb).getByLabelText("URL"), "x");
     expect(within(qb).getByRole("button", { name: "Test" })).toBeDisabled();
@@ -162,8 +166,8 @@ describe("SettingsPage connections", () => {
   });
 
   it("hints that an emptied field is not saved, and does not send it", async () => {
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    renderApp("/settings/connections");
     const qb = await screen.findByRole("group", { name: "qBittorrent" });
     expect(within(qb).queryByText(/Empty fields are not saved/)).not.toBeInTheDocument();
     await userEvent.clear(within(qb).getByLabelText("User name"));
@@ -174,13 +178,13 @@ describe("SettingsPage connections", () => {
   });
 
   it("drops an old test result after a successful save of that app", async () => {
-    mockApi({
+    mockApi({ ...shell,
       [SETTINGS]: ok(settingsFixture()),
       [PUT]: ok(settingsFixture()),
       [USERS]: ok([]),
       "POST /api/connections/sonarr/test": ok({ ok: true, detail: "Sonarr 4.0.12" }),
     });
-    renderWithProviders(<SettingsPage />);
+    renderApp("/settings/connections");
     const sonarr = await screen.findByRole("group", { name: "Sonarr" });
     await userEvent.click(within(sonarr).getByRole("button", { name: "Test" }));
     expect(await within(sonarr).findByText("Connected: Sonarr 4.0.12")).toBeInTheDocument();
@@ -190,20 +194,20 @@ describe("SettingsPage connections", () => {
   });
 
   it("shows dry run read-only", async () => {
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    renderApp("/settings/connections");
     expect(await screen.findByText("Dry run is on: set by REMOVARR_DRY_RUN.")).toBeInTheDocument();
   });
 });
 
 describe("SettingsPage rules", () => {
   it("shows a refused rule next to its field", async () => {
-    mockApi({
+    mockApi({ ...shell,
       [SETTINGS]: ok(settingsFixture()),
       [USERS]: ok([]),
       [PUT]: () => ({ status: 400, body: { error: "must be at least 0", field: "rules.graceDays" } }),
     });
-    renderWithProviders(<SettingsPage />);
+    renderApp("/settings/rules");
     const rules = await screen.findByRole("region", { name: "Rules" });
     const grace = within(rules).getByLabelText("Grace period (days)");
     await userEvent.clear(grace);
@@ -215,8 +219,8 @@ describe("SettingsPage rules", () => {
 
   it("sends only the changed rule", async () => {
     const put = recorder(() => ({ status: 200, body: settingsFixture() }));
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
+    renderApp("/settings/rules");
     const rules = await screen.findByRole("region", { name: "Rules" });
     const grace = within(rules).getByLabelText("Grace period (days)");
     await userEvent.clear(grace);
@@ -230,8 +234,8 @@ describe("SettingsPage rules", () => {
   it("disables the section's inputs while its save is pending", async () => {
     let finish!: () => void;
     const answer = new Promise<{ status: number; body: unknown }>((r) => (finish = () => r({ status: 200, body: settingsFixture() })));
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [PUT]: () => answer, [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [PUT]: () => answer, [USERS]: ok([]) });
+    renderApp("/settings/rules");
     const rules = await screen.findByRole("region", { name: "Rules" });
     const grace = within(rules).getByLabelText("Grace period (days)");
     await userEvent.clear(grace);
@@ -241,8 +245,6 @@ describe("SettingsPage rules", () => {
     expect(within(rules).getByLabelText("Protection tag")).toBeDisabled();
     expect(within(rules).getByLabelText("Watched mode")).toBeDisabled();
     expect(within(rules).getByLabelText("Protect favourites")).toBeDisabled();
-    const connections = screen.getByRole("region", { name: "Connections" });
-    expect(within(connections).getAllByRole("textbox")[0]).toBeEnabled();
     finish();
     await waitFor(() => expect(grace).toBeEnabled());
     expect(await within(rules).findByRole("status")).toHaveTextContent("Saved.");
@@ -250,8 +252,8 @@ describe("SettingsPage rules", () => {
 
   it("splits, trims and drops empty entries of the excluded lists", async () => {
     const put = recorder(() => ({ status: 200, body: settingsFixture() }));
-    mockApi({ [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
-    renderWithProviders(<SettingsPage />);
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });
+    renderApp("/settings/rules");
     const rules = await screen.findByRole("region", { name: "Rules" });
     await userEvent.type(within(rules).getByLabelText("Excluded categories"), " tv , ,books");
     await userEvent.click(within(rules).getByLabelText("Protect favourites"));
@@ -264,12 +266,12 @@ describe("SettingsPage rules", () => {
 describe("SettingsPage counting users", () => {
   it("lists the users, notes an empty selection and saves the selected id", async () => {
     const put = recorder(() => ({ status: 200, body: settingsFixture() }));
-    mockApi({
+    mockApi({ ...shell,
       [SETTINGS]: ok(settingsFixture()),
       [PUT]: put.route,
       [USERS]: ok([{ id: "u1", name: "Ada" }, { id: "u2", name: "Bo" }]),
     });
-    renderWithProviders(<SettingsPage />);
+    renderApp("/settings/counting-users");
     const users = await screen.findByRole("region", { name: "Counting users" });
     expect(await within(users).findByRole("checkbox", { name: "Ada" })).toBeInTheDocument();
     expect(within(users).getByText("Watched lists are not produced until at least one user is selected.")).toBeInTheDocument();
@@ -280,12 +282,36 @@ describe("SettingsPage counting users", () => {
   });
 
   it("asks to connect Jellyfin when the server answers 409", async () => {
-    mockApi({
+    mockApi({ ...shell,
       [SETTINGS]: ok(settingsFixture()),
       [USERS]: () => ({ status: 409, body: { error: "Jellyfin is not configured." } }),
     });
-    renderWithProviders(<SettingsPage />);
+    renderApp("/settings/counting-users");
     const users = await screen.findByRole("region", { name: "Counting users" });
     expect(await within(users).findByText("Connect Jellyfin first.")).toBeInTheDocument();
+  });
+});
+
+describe("the settings pages", () => {
+  it.each([
+    ["/settings/connections", "Connections", ["Counting users", "Rules"]],
+    ["/settings/counting-users", "Counting users", ["Connections", "Rules"]],
+    ["/settings/rules", "Rules", ["Connections", "Counting users"]],
+  ])("shows %s with its own heading and no other section", async (path, name, others) => {
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    renderApp(path);
+    expect(await screen.findByRole("heading", { level: 1, name })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name })).toBeInTheDocument();
+    for (const other of others) expect(screen.queryByRole("region", { name: other })).not.toBeInTheDocument();
+  });
+
+  it("shows the dry run line on the connections page only", async () => {
+    mockApi({ ...shell, [SETTINGS]: ok(settingsFixture()), [USERS]: ok([]) });
+    const first = renderApp("/settings/rules");
+    await screen.findByRole("region", { name: "Rules" });
+    expect(screen.queryByText("Dry run is on: set by REMOVARR_DRY_RUN.")).not.toBeInTheDocument();
+    first.unmount();
+    renderApp("/settings/connections");
+    expect(await screen.findByText("Dry run is on: set by REMOVARR_DRY_RUN.")).toBeInTheDocument();
   });
 });

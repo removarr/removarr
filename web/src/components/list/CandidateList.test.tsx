@@ -124,6 +124,25 @@ describe("the candidate list", () => {
     expect(screen.getByRole("checkbox", { name: "Select Alpha" })).not.toBeChecked();
   });
 
+  it("fixes the bulk bar to the bottom of the window only while rows are selected", async () => {
+    const { user } = setup([alpha, beta, gamma]);
+    expect(bar()).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Select Beta" }));
+    expect(bar()).toHaveClass("fixed", "bottom-0");
+    await user.click(screen.getByRole("checkbox", { name: "Select Beta" }));
+    expect(bar()).not.toBeInTheDocument();
+  });
+
+  it("pads the list while the bulk bar is shown, so the last row is never behind it", async () => {
+    const { user } = setup([alpha, beta, gamma]);
+    const list = screen.getByTestId("candidate-list");
+    expect(list.style.paddingBottom).toBe("");
+    await user.click(selectAllBox());
+    expect(list.style.paddingBottom).not.toBe("");
+    await user.click(within(bar()!).getByRole("button", { name: "Clear selection" }));
+    expect(list.style.paddingBottom).toBe("");
+  });
+
   it("hides the bulk bar when the selection is cleared", async () => {
     const { user } = setup([alpha, beta, gamma]);
     await user.click(selectAllBox());

@@ -58,7 +58,7 @@ export function ListPage({ list }: { list: ListKind }) {
     body = (
       <div className="flex flex-col items-center gap-1 py-8 text-sm text-muted-foreground">
         <p>removarr is not connected to any app yet.</p>
-        <Link to="/settings" className="underline">Open the settings</Link>
+        <Link to="/settings/connections" className="underline">Open the settings</Link>
       </div>
     );
   } else if (candidates.error) {

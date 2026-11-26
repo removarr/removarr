@@ -16,6 +16,7 @@ beforeEach(() => {
     "GET /api/candidates?list=series&ignored=false": list("series"),
     "GET /api/candidates?list=torrents&ignored=false": list("torrents"),
     "GET /api/settings": () => ({ status: 500, body: { error: "not needed here" } }),
+    "GET /api/media-server/users": () => ({ status: 500, body: { error: "not needed here" } }),
     "GET /api/status": () => ({
       status: 200,
       body: { dryRun: false, connections: {}, scan: { running: false }, lastScan: null, stale: false },
@@ -49,7 +50,9 @@ describe("the app shell", () => {
     ["/series", "Series"],
     ["/torrents", "Torrents"],
     ["/history", "History"],
-    ["/settings", "Settings"],
+    ["/settings/connections", "Connections"],
+    ["/settings/counting-users", "Counting users"],
+    ["/settings/rules", "Rules"],
   ])("shows the page of %s and marks its link as the current one", async (path, name) => {
     renderAt(path);
     expect(await screen.findByRole("heading", { level: 1, name })).toBeInTheDocument();
