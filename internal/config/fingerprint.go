@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"slices"
 )
 
 // Fingerprint identifies the settings a scan depends on, so the UI can tell when the stored
@@ -19,6 +20,11 @@ func (s *Service) Fingerprint(ctx context.Context) (string, error) {
 	rules, err := s.Rules(ctx)
 	if err != nil {
 		return "", err
+	}
+	// The order of these lists does not change what a scan finds. Sort copies, so the
+	// order alone never marks the lists out of date and the rules stay as saved.
+	for _, list := range []*[]string{&rules.CountingUsers, &rules.ExcludedCategories, &rules.ExcludedTags} {
+		*list = slices.Sorted(slices.Values(*list))
 	}
 	conns, err := s.ConnView(ctx)
 	if err != nil {

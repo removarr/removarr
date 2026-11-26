@@ -62,6 +62,38 @@ func TestServesTheIndexForAPathWithATrailingSlash(t *testing.T) {
 	}
 }
 
+// A missing script or image answered with the UI's page would be read as the wrong type
+// and fail in a way that hides the cause; a client route never has an extension.
+func TestAMissingAssetOrFileIsNotFoundWhileAClientRouteGetsTheIndex(t *testing.T) {
+	sub, err := fs.Sub(fstest.MapFS{
+		"dist/index.html":       built["index.html"],
+		"dist/assets/app-1a.js": built["assets/app-1a.js"],
+	}, "dist")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"/assets/missing.js", "/assets/missing", "/assets/", "/favicon.ico", "/settings/logo.png"} {
+		r := get(t, Handler(sub), "GET", p)
+		if r.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", p, r.StatusCode)
+		}
+		if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+			t.Errorf("%s: Content-Type = %q", p, ct)
+		}
+		if cc := r.Header.Get("Cache-Control"); cc != "no-cache" {
+			t.Errorf("%s: Cache-Control = %q", p, cc)
+		}
+		if strings.Contains(body(t, r), "<title>removarr</title>") {
+			t.Errorf("%s: answered with the UI's page", p)
+		}
+	}
+	for _, p := range []string{"/series", "/series/", "/assets/app-1a.js"} {
+		if r := get(t, Handler(sub), "GET", p); r.StatusCode != 200 {
+			t.Errorf("%s: status = %d, want 200", p, r.StatusCode)
+		}
+	}
+}
+
 func TestRefusesMethodsOtherThanGetAndHead(t *testing.T) {
 	r := get(t, Handler(built), "POST", "/")
 	if r.StatusCode != http.StatusMethodNotAllowed {

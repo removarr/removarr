@@ -104,7 +104,7 @@ Consequences of API-only:
 - A scan runs only when the user starts it. One scan runs at a time.
 - Scan results are stored, so the lists load immediately on later visits.
 - The header shows when the last scan ran, a summary (candidates per list, protected count, unmatched count, waiting count, errors), and the free space of the library root folders as reported by Sonarr and Radarr.
-- **Out of date.** When the rules or a connection's address or user name changed after the last scan started, the header says that the lists may be out of date and suggests a scan. Each scan records a fingerprint of those settings when it starts; a secret is not part of it. Nothing else depends on this: a plan always reads the apps again with the current settings (6.10).
+- **Out of date.** When the rules or a connection's address or user name changed after the last scan started, the header says that the lists may be out of date and suggests a scan. Each scan records a fingerprint of those settings when it starts; a secret is not part of it, and neither is the order of the counting users, excluded categories or excluded tags. Nothing else depends on this: a plan always reads the apps again with the current settings (6.10).
 
 ### 5.5 History
 
@@ -436,7 +436,7 @@ One SQLite file in the config directory.
 - **Lists:** a table on wide screens and cards on narrow ones, with a bulk bar that stays visible while rows are selected.
 - **First run:** with no connections configured, the lists point the user to Settings.
 - **Theme:** follows the system light or dark setting.
-- **Serving:** the server serves the UI's files at every path outside `/api/`, and the UI's page for any path it does not hold, so a page of the UI can be reloaded. A binary built without the UI answers those paths with a page that says so.
+- **Serving:** the server serves the UI's files at every path outside `/api/`, and the UI's page for any path it does not hold, so a page of the UI can be reloaded. A path under `assets/`, or one whose last part has a file extension, names a file and never a page of the UI: when the file is missing the answer is "not found". A binary built without the UI answers those paths with a page that says so.
 
 ## 8. Error handling
 

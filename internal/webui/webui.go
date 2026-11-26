@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"path"
 	"strings"
 )
 
@@ -55,6 +56,14 @@ func Handler(files fs.FS) http.Handler {
 			} else if err != nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, fs.ErrInvalid) {
 				// ErrInvalid: a name such as "series/" is no valid path, so it names no file.
 				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			// A client route has no extension and is never under assets/. Anything else names
+			// a file that is not there: answering it with the UI's page would hand a browser
+			// HTML where it expects a script or an image.
+			if strings.HasPrefix(name, "assets/") || path.Ext(strings.TrimSuffix(name, "/")) != "" {
+				w.Header().Set("Cache-Control", "no-cache")
+				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
 		}
