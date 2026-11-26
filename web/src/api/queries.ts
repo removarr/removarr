@@ -1,7 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, rowsBody } from "./client";
-import type { ActionsPage, CandidatesResponse, ExecuteResult, ListKind, Plan, Status } from "./types";
+import type {
+  ActionsPage, AppName, CandidatesResponse, ExecuteResult, ListKind, MediaUser, Plan, Rules, Settings, Status,
+  TestResult,
+} from "./types";
 
 // The query keys. A list's candidates are ["candidates", list, ignored].
 export const keys = {
@@ -119,4 +122,44 @@ export function useRefreshAfterDelete() {
     qc.invalidateQueries({ queryKey: keys.status });
     qc.invalidateQueries({ queryKey: keys.actions });
   };
+}
+
+// useSettings loads the rules and where each connection value comes from (spec 5.6). A secret
+// never comes back.
+export function useSettings() {
+  return useQuery({ queryKey: keys.settings, queryFn: () => api<Settings>("/api/settings") });
+}
+
+// SettingsChange is the body of PUT /api/settings: only the fields that changed. A
+// connection field that is named here is changed, and null clears it (spec 9.2).
+export interface SettingsChange {
+  rules?: Partial<Rules>;
+  connections?: Partial<Record<AppName, Record<string, string | null>>>;
+}
+
+// useSaveSettings saves the changed fields. The answer is the new settings; the status is
+// reloaded because the stale notice depends on them, and the users because Jellyfin may now
+// be connected.
+export function useSaveSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (change: SettingsChange) => api<Settings>("/api/settings", { method: "PUT", body: change }),
+    onSuccess: (data) => {
+      qc.setQueryData(keys.settings, data);
+      qc.invalidateQueries({ queryKey: keys.status });
+      qc.invalidateQueries({ queryKey: keys.users });
+    },
+  });
+}
+
+// useUsers lists the media server's users. It only asks when Jellyfin is configured.
+export function useUsers(enabled: boolean) {
+  return useQuery({ queryKey: keys.users, queryFn: () => api<MediaUser[]>("/api/media-server/users"), enabled });
+}
+
+// useTestConnection tests the SAVED values of one app.
+export function useTestConnection(app: AppName) {
+  return useMutation({
+    mutationFn: () => api<TestResult>(`/api/connections/${app}/test`, { method: "POST", body: {} }),
+  });
 }

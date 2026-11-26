@@ -15,6 +15,7 @@ beforeEach(() => {
     "GET /api/candidates?list=movies&ignored=false": list("movies"),
     "GET /api/candidates?list=series&ignored=false": list("series"),
     "GET /api/candidates?list=torrents&ignored=false": list("torrents"),
+    "GET /api/settings": () => ({ status: 500, body: { error: "not needed here" } }),
     "GET /api/status": () => ({
       status: 200,
       body: { dryRun: false, connections: {}, scan: { running: false }, lastScan: null, stale: false },
