@@ -52,7 +52,8 @@ func Handler(files fs.FS) http.Handler {
 				}
 				fileServer.ServeHTTP(w, r)
 				return
-			} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			} else if err != nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, fs.ErrInvalid) {
+				// ErrInvalid: a name such as "series/" is no valid path, so it names no file.
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
 			}

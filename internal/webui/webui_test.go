@@ -49,6 +49,19 @@ func TestServesTheIndexForAPathTheUIHandlesItself(t *testing.T) {
 	}
 }
 
+func TestServesTheIndexForAPathWithATrailingSlash(t *testing.T) {
+	sub, err := fs.Sub(fstest.MapFS{"dist/index.html": built["index.html"]}, "dist") // like Files(): its Stat rejects names that are not valid paths
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"/series/", "/settings/connections/"} {
+		r := get(t, Handler(sub), "GET", p)
+		if r.StatusCode != 200 || !strings.Contains(body(t, r), "<title>removarr</title>") {
+			t.Errorf("%s: got %d", p, r.StatusCode)
+		}
+	}
+}
+
 func TestRefusesMethodsOtherThanGetAndHead(t *testing.T) {
 	r := get(t, Handler(built), "POST", "/")
 	if r.StatusCode != http.StatusMethodNotAllowed {

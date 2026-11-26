@@ -96,7 +96,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plans", s.buildPlan)
 	mux.HandleFunc("POST /api/plans/{id}/execute", s.executePlan)
 	mux.HandleFunc("GET /api/actions", s.listActions)
-	// An unknown API path must never fall through to the UI's page.
+	// An unknown API path must never fall through to the UI's page. This also answers 404,
+	// not 405, for a wrong method on an existing API path.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
