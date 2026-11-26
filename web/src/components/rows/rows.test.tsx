@@ -79,6 +79,18 @@ describe("media rows", () => {
     expect(screen.getByText("Deleted together with: Omega")).toBeInTheDocument();
   });
 
+  it("names each tied season by its series and season, not by the series alone", () => {
+    renderMedia([
+      movie({
+        tiedWith: [
+          { list: "series", key: "series:7:season:1", title: "Show", season: 1 },
+          { list: "series", key: "series:7:season:2", title: "Show", season: 2 },
+        ],
+      }),
+    ]);
+    expect(screen.getByText("Deleted together with: Show, season 1; Show, season 2")).toBeInTheDocument();
+  });
+
   it("shows the torrents of a row when expanded, with what lies outside the library", async () => {
     renderMedia([movie({ torrents: [torrent({ outsideLibrary: 6 * GiB })] })]);
     await userEvent.setup().click(screen.getByRole("button", { name: "Show torrents of Alpha" }));

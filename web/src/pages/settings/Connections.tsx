@@ -70,7 +70,8 @@ export function Connections({ settings }: { settings: Settings }) {
   return (
     <section aria-label="Connections" className="space-y-4">
       <h2 className="text-lg font-semibold">Connections</h2>
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* A save that succeeds drops the edits, so nothing can be typed while it is pending. */}
+      <fieldset disabled={save.isPending} className="grid min-w-0 gap-4 md:grid-cols-2">
         {APPS.map((a) => (
           <AppCard
             key={a.app} app={a.app} title={a.title} fields={a.fields} views={settings.connections[a.app] ?? {}}
@@ -78,7 +79,7 @@ export function Connections({ settings }: { settings: Settings }) {
             onEdit={(name, v) => setEdit(a.app, name, v)}
           />
         ))}
-      </div>
+      </fieldset>
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={onSave} disabled={!changes || save.isPending}>Save connections</Button>
         {saved && <p role="status" className="text-sm">Saved. Scan again to apply the changes to the lists.</p>}

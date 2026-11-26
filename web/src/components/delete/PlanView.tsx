@@ -76,7 +76,7 @@ function Torrent({ t }: { t: PlanTorrent }) {
         {t.torrent.outsideLibrary !== undefined && (
           <Badge variant="outline">Outside the library: {formatSize(t.torrent.outsideLibrary)}</Badge>
         )}
-        {t.keepData && <Badge variant="outline">Keeps its data: another download uses it</Badge>}
+        {t.keepData && <Badge variant="outline">Keeps its data: shared with another download, or its path is unknown</Badge>}
         {t.linkedBySize && <Badge variant="destructive">Linked by file size only: check that it belongs</Badge>}
       </div>
     </li>

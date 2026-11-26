@@ -25,7 +25,7 @@ describe("HistoryPage", () => {
     expect(items).toHaveLength(2);
     const first = within(items[0]);
     expect(first.getByText(formatDateTime(a2.at))).toBeInTheDocument();
-    expect(first.getByText("Season 2")).toBeInTheDocument();
+    expect(first.getByText("Show, season 2")).toBeInTheDocument();
     expect(first.getByText("Failed")).toBeInTheDocument();
     expect(first.getByText(/Sonarr answered 500/)).toBeInTheDocument();
     expect(first.getByText(/size 5\.0 GiB/)).toBeInTheDocument();
@@ -42,10 +42,10 @@ describe("HistoryPage", () => {
     const api = mockApi({ [FIRST]: ok({ actions: [a2], next: 2 }), [SECOND]: ok({ actions: [older] }) });
     const user = userEvent.setup();
     renderWithProviders(<HistoryPage />);
-    await screen.findByText("Season 2");
+    await screen.findByText("Show, season 2");
     await user.click(screen.getByRole("button", { name: "Load more" }));
     expect(await screen.findByText("Older Movie")).toBeInTheDocument();
-    expect(screen.getByText("Season 2")).toBeInTheDocument();
+    expect(screen.getByText("Show, season 2")).toBeInTheDocument();
     expect(screen.getByText("Dry run")).toBeInTheDocument();
     expect(api.calls).toContain(SECOND);
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();

@@ -226,6 +226,28 @@ describe("SettingsPage rules", () => {
     expect(bodyOf(put.calls)).toEqual({ rules: { graceDays: 7 } });
   });
 
+  // A save that succeeds drops the edits, so text typed while it is pending would be lost.
+  it("disables the section's inputs while its save is pending", async () => {
+    let finish!: () => void;
+    const answer = new Promise<{ status: number; body: unknown }>((r) => (finish = () => r({ status: 200, body: settingsFixture() })));
+    mockApi({ [SETTINGS]: ok(settingsFixture()), [PUT]: () => answer, [USERS]: ok([]) });
+    renderWithProviders(<SettingsPage />);
+    const rules = await screen.findByRole("region", { name: "Rules" });
+    const grace = within(rules).getByLabelText("Grace period (days)");
+    await userEvent.clear(grace);
+    await userEvent.type(grace, "7");
+    await userEvent.click(screen.getByRole("button", { name: "Save rules" }));
+    await waitFor(() => expect(grace).toBeDisabled());
+    expect(within(rules).getByLabelText("Protection tag")).toBeDisabled();
+    expect(within(rules).getByLabelText("Watched mode")).toBeDisabled();
+    expect(within(rules).getByLabelText("Protect favourites")).toBeDisabled();
+    const connections = screen.getByRole("region", { name: "Connections" });
+    expect(within(connections).getAllByRole("textbox")[0]).toBeEnabled();
+    finish();
+    await waitFor(() => expect(grace).toBeEnabled());
+    expect(await within(rules).findByRole("status")).toHaveTextContent("Saved.");
+  });
+
   it("splits, trims and drops empty entries of the excluded lists", async () => {
     const put = recorder(() => ({ status: 200, body: settingsFixture() }));
     mockApi({ [SETTINGS]: ok(settingsFixture()), [PUT]: put.route, [USERS]: ok([]) });

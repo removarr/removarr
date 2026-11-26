@@ -1,10 +1,8 @@
 import type { ExecuteResult, Outcome } from "@/api/types";
-import { Badge } from "@/components/ui/badge";
 import { formatSize } from "@/lib/format";
 import { rowLabel } from "@/lib/selection";
+import { OutcomeBadge } from "./OutcomeBadge";
 import { StepLine } from "./StepLine";
-
-const OUTCOME: Record<Outcome, string> = { done: "Done", failed: "Failed", "dry-run": "Dry run" };
 
 // OutcomeView shows what an execution did (spec 7.4, step 6): per item its rows, its outcome
 // and every step with its result, failures with the app's error.
@@ -29,9 +27,7 @@ export function OutcomeView({ result }: { result: ExecuteResult }) {
                   </li>
                 ))}
               </ul>
-              <Badge variant={a.outcome === "failed" ? "destructive" : a.outcome === "done" ? "default" : "secondary"}>
-                {OUTCOME[a.outcome]}
-              </Badge>
+              <OutcomeBadge outcome={a.outcome} />
             </div>
             <ol className="flex list-decimal flex-col gap-0.5 pl-5 text-sm">
               {a.steps.map((s, i) => (

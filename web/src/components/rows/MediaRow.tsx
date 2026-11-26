@@ -3,6 +3,7 @@ import type { Candidate } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import type { ColumnSpec, CandidateListProps } from "@/components/list/CandidateList";
 import { formatDate, formatSize } from "@/lib/format";
+import { rowLabel } from "@/lib/selection";
 
 export const mediaSortKeys: CandidateListProps["sortKeys"] = [
   { id: "size", label: "Size" },
@@ -35,12 +36,14 @@ function Badges({ row }: { row: Candidate }): ReactNode {
   );
 }
 
-// Tied names the rows that are deleted together with this one (spec 6.3, 6.7).
+// Tied names the rows that are deleted together with this one (spec 6.3, 6.7). A season row
+// carries its series' title, so the label names the season too; a label holds a comma, so
+// the labels are separated by semicolons.
 function Tied({ row }: { row: Candidate }): ReactNode {
   if (!row.tiedWith || row.tiedWith.length === 0) return null;
   return (
     <p className="text-xs text-muted-foreground">
-      Deleted together with: {row.tiedWith.map((t) => t.title).join(", ")}
+      Deleted together with: {row.tiedWith.map(rowLabel).join("; ")}
     </p>
   );
 }

@@ -54,7 +54,8 @@ export function CountingUsers({ settings }: { settings: Settings }) {
   return (
     <section aria-label="Counting users" className="space-y-4">
       <h2 className="text-lg font-semibold">Counting users</h2>
-      {body}
+      {/* A save that succeeds drops the draft, so nothing can be changed while it is pending. */}
+      <fieldset disabled={save.isPending} className="min-w-0">{body}</fieldset>
       {selected.length === 0 && (
         <p className="text-sm text-muted-foreground">Watched lists are not produced until at least one user is selected.</p>
       )}

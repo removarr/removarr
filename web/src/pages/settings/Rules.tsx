@@ -98,52 +98,55 @@ export function Rules({ settings }: { settings: Settings }) {
   return (
     <section aria-label="Rules" className="space-y-4">
       <h2 className="text-lg font-semibold">Rules</h2>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field name="watchedMode" label="Watched mode" error={err("watchedMode")}>
-          <select id="rule-watchedMode" className={SELECT_CLASS} value={edits.watchedMode ?? rules.watchedMode}
-            onChange={(e) => set({ watchedMode: e.target.value as RulesType["watchedMode"] })}>
-            <option value="all">All counting users have watched it</option>
-            <option value="any">Any counting user has watched it</option>
-          </select>
-        </Field>
-        <Field name="graceDays" label="Grace period (days)" error={err("graceDays")}>
-          <Input id="rule-graceDays" type="number" value={text("graceDays")} onChange={(e) => set({ graceDays: e.target.value })} />
-        </Field>
-        <Field name="seriesUnit" label="Series unit" error={err("seriesUnit")}>
-          <select id="rule-seriesUnit" className={SELECT_CLASS} value={edits.seriesUnit ?? rules.seriesUnit}
-            onChange={(e) => set({ seriesUnit: e.target.value as RulesType["seriesUnit"] })}>
-            <option value="series">Whole series</option>
-            <option value="season">Per season</option>
-          </select>
-        </Field>
-        <Field name="protectionTag" label="Protection tag" error={err("protectionTag")}>
-          <Input id="rule-protectionTag" value={text("protectionTag")} onChange={(e) => set({ protectionTag: e.target.value })} />
-        </Field>
-        <Field name="minRatio" label="Minimum ratio (0 = off)" error={err("minRatio")}>
-          <Input id="rule-minRatio" type="number" step="any" value={text("minRatio")} onChange={(e) => set({ minRatio: e.target.value })} />
-        </Field>
-        <Field name="minSeedDays" label="Minimum seeding time (days, 0 = off)" error={err("minSeedDays")}>
-          <Input id="rule-minSeedDays" type="number" step="any" value={text("minSeedDays")} onChange={(e) => set({ minSeedDays: e.target.value })} />
-        </Field>
-        <Field name="excludedCategories" label="Excluded categories" error={err("excludedCategories")}>
-          <Input id="rule-excludedCategories" placeholder="Comma-separated" value={text("excludedCategories")}
-            onChange={(e) => set({ excludedCategories: e.target.value })} />
-        </Field>
-        <Field name="excludedTags" label="Excluded tags" error={err("excludedTags")}>
-          <Input id="rule-excludedTags" placeholder="Comma-separated" value={text("excludedTags")}
-            onChange={(e) => set({ excludedTags: e.target.value })} />
-        </Field>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox id="rule-protectFavorites" checked={edits.protectFavorites ?? rules.protectFavorites}
-          onCheckedChange={(c) => set({ protectFavorites: c === true })} />
-        <Label htmlFor="rule-protectFavorites">Protect favourites</Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox id="rule-addExclusionOnDelete" checked={edits.addExclusionOnDelete ?? rules.addExclusionOnDelete}
-          onCheckedChange={(c) => set({ addExclusionOnDelete: c === true })} />
-        <Label htmlFor="rule-addExclusionOnDelete">Add to exclusion list on delete</Label>
-      </div>
+      {/* A save that succeeds drops the edits, so nothing can be typed while it is pending. */}
+      <fieldset disabled={save.isPending} className="min-w-0 space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field name="watchedMode" label="Watched mode" error={err("watchedMode")}>
+            <select id="rule-watchedMode" className={SELECT_CLASS} value={edits.watchedMode ?? rules.watchedMode}
+              onChange={(e) => set({ watchedMode: e.target.value as RulesType["watchedMode"] })}>
+              <option value="all">All counting users have watched it</option>
+              <option value="any">Any counting user has watched it</option>
+            </select>
+          </Field>
+          <Field name="graceDays" label="Grace period (days)" error={err("graceDays")}>
+            <Input id="rule-graceDays" type="number" value={text("graceDays")} onChange={(e) => set({ graceDays: e.target.value })} />
+          </Field>
+          <Field name="seriesUnit" label="Series unit" error={err("seriesUnit")}>
+            <select id="rule-seriesUnit" className={SELECT_CLASS} value={edits.seriesUnit ?? rules.seriesUnit}
+              onChange={(e) => set({ seriesUnit: e.target.value as RulesType["seriesUnit"] })}>
+              <option value="series">Whole series</option>
+              <option value="season">Per season</option>
+            </select>
+          </Field>
+          <Field name="protectionTag" label="Protection tag" error={err("protectionTag")}>
+            <Input id="rule-protectionTag" value={text("protectionTag")} onChange={(e) => set({ protectionTag: e.target.value })} />
+          </Field>
+          <Field name="minRatio" label="Minimum ratio (0 = off)" error={err("minRatio")}>
+            <Input id="rule-minRatio" type="number" step="any" value={text("minRatio")} onChange={(e) => set({ minRatio: e.target.value })} />
+          </Field>
+          <Field name="minSeedDays" label="Minimum seeding time (days, 0 = off)" error={err("minSeedDays")}>
+            <Input id="rule-minSeedDays" type="number" step="any" value={text("minSeedDays")} onChange={(e) => set({ minSeedDays: e.target.value })} />
+          </Field>
+          <Field name="excludedCategories" label="Excluded categories" error={err("excludedCategories")}>
+            <Input id="rule-excludedCategories" placeholder="Comma-separated" value={text("excludedCategories")}
+              onChange={(e) => set({ excludedCategories: e.target.value })} />
+          </Field>
+          <Field name="excludedTags" label="Excluded tags" error={err("excludedTags")}>
+            <Input id="rule-excludedTags" placeholder="Comma-separated" value={text("excludedTags")}
+              onChange={(e) => set({ excludedTags: e.target.value })} />
+          </Field>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox id="rule-protectFavorites" checked={edits.protectFavorites ?? rules.protectFavorites}
+            onCheckedChange={(c) => set({ protectFavorites: c === true })} />
+          <Label htmlFor="rule-protectFavorites">Protect favourites</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox id="rule-addExclusionOnDelete" checked={edits.addExclusionOnDelete ?? rules.addExclusionOnDelete}
+            onCheckedChange={(c) => set({ addExclusionOnDelete: c === true })} />
+          <Label htmlFor="rule-addExclusionOnDelete">Add to exclusion list on delete</Label>
+        </div>
+      </fieldset>
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={onSave} disabled={!any || save.isPending}>Save rules</Button>
         {saved && <p role="status" className="text-sm">Saved. Scan again to apply the changes to the lists.</p>}

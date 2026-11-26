@@ -45,11 +45,11 @@ const dialogButtons = () => within(screen.getByRole("dialog")).queryAllByRole("b
 const itemOf = (text: string) => within(screen.getByRole("dialog")).getByText(text).closest("li") as HTMLElement;
 
 describe("delete flow", () => {
-  it("posts exactly the selected rows and cannot be closed while the plan is built", async () => {
+  it("posts exactly the selected rows and shows the plan once it is built", async () => {
     const answer = deferred();
     let body: unknown;
     let headers: Record<string, string> = {};
-    const { api, user } = await openDelete({
+    const { api } = await openDelete({
       [PLANS]: (init) => {
         body = JSON.parse(String(init.body));
         headers = init.headers as Record<string, string>;
@@ -62,12 +62,40 @@ describe("delete flow", () => {
     ).toBeInTheDocument();
     expect(body).toEqual(ROWS);
     expect(headers["X-Removarr-Request"]).toBe("1");
-    expect(dialogButtons()).toEqual([]);
-    await user.keyboard("{Escape}");
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(dialogButtons()).toEqual(["Cancel"]);
     answer.resolve({ status: 201, body: planFixture });
     expect(await within(dialog).findByText("3 items · 13.0 GiB")).toBeInTheDocument();
     expect(api.count(PLANS)).toBe(1);
+  });
+
+  // Building a plan changes nothing, so it can be abandoned; the plan that comes back later
+  // must not reopen the dialog.
+  it("closes on Cancel while the plan is built, keeps the selection and ignores the late plan", async () => {
+    const answer = deferred();
+    const { api, user } = await openDelete({ [PLANS]: () => answer.promise });
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "Select Alpha" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select Gamma" })).toBeChecked();
+    expect(screen.getByRole("region", { name: "Selected rows" })).toBeInTheDocument();
+
+    answer.resolve({ status: 201, body: planFixture });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("3 items · 13.0 GiB")).not.toBeInTheDocument();
+    expect(api.count(PLANS)).toBe(1);
+  });
+
+  it("closes on Escape while the plan is built", async () => {
+    const answer = deferred();
+    const { user } = await openDelete({ [PLANS]: () => answer.promise });
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    answer.resolve({ status: 201, body: planFixture });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows the plan grouped by app with every note, the kept torrents and the skipped rows", async () => {
@@ -104,7 +132,7 @@ describe("delete flow", () => {
     expect(within(pack).getByText("Outside the library: 6.0 GiB")).toBeInTheDocument();
     expect(within(pack).queryByText(/Keeps its data/)).not.toBeInTheDocument();
     const remux = within(qbit).getByText("Alpha.Remux").closest("li") as HTMLElement;
-    expect(within(remux).getByText("Keeps its data: another download uses it")).toBeInTheDocument();
+    expect(within(remux).getByText("Keeps its data: shared with another download, or its path is unknown")).toBeInTheDocument();
     expect(within(remux).getByText("Linked by file size only: check that it belongs")).toBeInTheDocument();
     expect(within(qbit).getByText("Orphan.Torrent")).toBeInTheDocument();
     expect(within(within(qbit).getByText("Alpha.Queued").closest("li") as HTMLElement).getByText("In a download queue")).toBeInTheDocument();

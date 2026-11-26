@@ -80,8 +80,10 @@ export function useDeleteFlow() {
         },
       );
     },
+    // close ends the deletion. Building a plan changes nothing, so it can be abandoned: the run
+    // counter drops its late answer. An execution cannot be, so nothing closes it.
     close() {
-      if (state.kind === "building" || state.kind === "executing") return;
+      if (state.kind === "executing") return;
       run.current++;
       if (state.kind === "done") {
         refresh();
@@ -106,14 +108,14 @@ const TITLES: Record<Exclude<State["kind"], "closed">, string> = {
 };
 
 // DeleteFlow is the dialog of a deletion: the plan for confirmation, then the outcome. It
-// cannot be closed while it waits on the server, so nothing suggests the request stopped.
+// cannot be closed while a plan executes, so nothing suggests the execution stopped; while a
+// plan is built it can, because building changes nothing.
 export function DeleteFlow({ flow }: { flow: DeleteFlowState }) {
   const status = useStatus();
   const dryRun = status.data?.dryRun ?? false;
   const { state } = flow;
-  const busy = state.kind === "building" || state.kind === "executing";
   const keep = (e: Event) => {
-    if (busy) e.preventDefault();
+    if (state.kind === "executing") e.preventDefault();
   };
 
   let body;
@@ -123,6 +125,7 @@ export function DeleteFlow({ flow }: { flow: DeleteFlowState }) {
       return null;
     case "building":
       body = <p className="text-sm">Building the plan… This reads every app and takes about as long as a scan.</p>;
+      buttons = <Button type="button" variant="outline" onClick={flow.close}>Cancel</Button>;
       break;
     case "built": {
       const { plan } = state;

@@ -15,10 +15,6 @@ import { torrentCard, torrentColumns, torrentSortKeys } from "@/components/rows/
 
 const TITLES: Record<ListKind, string> = { movies: "Movies", series: "Series", torrents: "Torrents" };
 
-// bulkActions is the slot of the bulk bar next to Ignore. ignoredView tells it which view the
-// rows come from; ListPage fills it with Delete when the page gives none.
-export type BulkActions = (selected: Candidate[], clear: () => void, ignoredView: boolean) => ReactNode;
-
 function Message({ children }: { children: ReactNode }) {
   return <p className="py-8 text-center text-sm text-muted-foreground">{children}</p>;
 }
@@ -34,18 +30,17 @@ function Alert({ children }: { children: ReactNode }) {
 // ListPage loads one list and shows it, or says why there is nothing to show. The states
 // come in a fixed order of precedence: status loading, no app configured, the list's error
 // (no rows and no bulk actions, spec 6.8 rule 5), no scan yet, an empty list, the list.
-export function ListPage({ list, bulkActions }: { list: ListKind; bulkActions?: BulkActions }) {
+export function ListPage({ list }: { list: ListKind }) {
   const status = useStatus();
   const [ignored, setIgnored] = useState(false);
   const candidates = useCandidates(list, ignored);
   // The deletion lives here, above the list, so its dialog survives the list reloading.
   const deletion = useDeleteFlow();
-  const deleteAction: BulkActions = (selected, clear) => (
+  const deleteAction = (selected: Candidate[], clear: () => void) => (
     <Button type="button" variant="destructive" size="sm" onClick={() => deletion.start(selected, clear)}>
       Delete
     </Button>
   );
-  const extraActions = bulkActions ?? deleteAction;
   const title = (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-2xl font-semibold">{TITLES[list]}</h1>
@@ -90,7 +85,7 @@ export function ListPage({ list, bulkActions }: { list: ListKind; bulkActions?: 
         actions={(selected, clear) => (
           <>
             <IgnoreActions selected={selected} clear={clear} ignoredView={ignored} />
-            {ignored ? null : extraActions(selected, clear, false)}
+            {ignored ? null : deleteAction(selected, clear)}
           </>
         )}
         emptyText={ignored ? "Nothing is ignored in this list." : "Nothing to suggest."}

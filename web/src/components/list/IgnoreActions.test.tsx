@@ -79,7 +79,7 @@ describe("ignored view", () => {
       ...extra,
     });
     const user = userEvent.setup();
-    renderWithProviders(<ListPage list="movies" bulkActions={() => <button>Delete</button>} />);
+    renderWithProviders(<ListPage list="movies" />);
     await user.click(await screen.findByRole("checkbox", { name: "Select Alpha" }));
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
     await user.click(screen.getByRole("switch", { name: "Show ignored" }));
