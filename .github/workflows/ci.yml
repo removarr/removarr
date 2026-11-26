@@ -36,3 +36,10 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # The end-to-end test runs the fake server (internal/e2e/fakeserver), which embeds the
+      # build above.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e

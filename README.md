@@ -10,6 +10,26 @@ Requires Go 1.27.
 
     go test ./...
 
+## Developing the UI
+
+The web UI is in `web/` and needs Node 24 and pnpm.
+
+    pnpm --dir web install
+
+Start removarr on port 7272, or the fake server, which serves the real API on a small fake library and never connects to an app:
+
+    go run ./internal/e2e/fakeserver -port 7272 -dir ./config-fake
+
+Then start the development server, which forwards `/api` to port 7272:
+
+    pnpm --dir web dev
+
+The removarr binary embeds `internal/webui/dist`, so build the UI with `pnpm --dir web build` before `go build`. The checks of the UI are `pnpm --dir web test`, `pnpm --dir web typecheck` and the end-to-end test, which runs the fake server on port 7373 and needs the UI built and Chromium installed once:
+
+    pnpm --dir web exec playwright install chromium
+    pnpm --dir web build
+    pnpm --dir web e2e
+
 ## Running
 
     REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
