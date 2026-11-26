@@ -121,6 +121,8 @@ describe("the side panel's open and closed states", () => {
     expect(panel()).toHaveAttribute("inert");
     expect(panel()).toHaveAttribute("aria-hidden", "true");
     expect(panel()).toHaveClass("invisible");
+    // No border either, or the closed panel would still take a pixel from the content.
+    expect(panel()).toHaveClass("border-r-0");
     expect(panel().style.width).toBe("0px");
     expect(panel().querySelectorAll("a").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Show menu" }));

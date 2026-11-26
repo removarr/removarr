@@ -160,6 +160,8 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
     await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
     await expect(shownPanelLinks(page)).toHaveCount(0);
     expect(await panelLinkTakesFocus(page)).toBe(false);
+    // Closed, the panel takes no width at all, not even its border.
+    expect(await page.evaluate(`document.querySelector('nav[aria-label="Main"]').getBoundingClientRect().width`)).toBe(0);
     await page.reload();
     await expect(page.getByRole("heading", { level: 1, name: "Rules" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();

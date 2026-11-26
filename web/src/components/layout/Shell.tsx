@@ -200,7 +200,7 @@ export function Shell() {
             wide
               ? cn(
                   "overflow-x-clip",
-                  open ? "visible transition-[width]" : "invisible border-transparent transition-[width,visibility]",
+                  open ? "visible transition-[width]" : "invisible border-r-0 transition-[width,visibility]",
                 )
               : cn(
                   "fixed inset-y-0 left-0 z-50 w-64 max-w-[80vw] overflow-y-auto shadow-lg",
