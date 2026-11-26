@@ -309,6 +309,36 @@ func TestHealthAnswersUnderAnyName(t *testing.T) {
 	}
 }
 
+// Another site could show the UI in a frame and lure the user into clicking through a
+// deletion. Every answer forbids that, whatever branch of the guard answers it.
+func TestEveryAnswerForbidsFraming(t *testing.T) {
+	h := newHarness(t, nil)
+	evil := func(r *http.Request) { r.Host = "evil.example" }
+	cases := []struct {
+		name string
+		rec  *httptest.ResponseRecorder
+	}{
+		{"ui", h.do(http.MethodGet, "/movies", "")},
+		{"api", h.do(http.MethodGet, "/api/status", "")},
+		{"refused host outside the api", h.do(http.MethodGet, "/movies", "", evil)},
+		{"refused host in the api", h.do(http.MethodGet, "/api/status", "", evil)},
+		{"health check", h.do(http.MethodGet, "/api/health", "", evil)},
+		{"refused change", h.do(http.MethodPost, "/api/scans", "{}", func(r *http.Request) { r.Header.Del(RequestHeader) })},
+	}
+	want := map[string]string{
+		"X-Frame-Options":         "DENY",
+		"Content-Security-Policy": "frame-ancestors 'none'",
+		"X-Content-Type-Options":  "nosniff",
+	}
+	for _, c := range cases {
+		for k, v := range want {
+			if got := c.rec.Header().Get(k); got != v {
+				t.Errorf("%s: %s = %q, want %q", c.name, k, got, v)
+			}
+		}
+	}
+}
+
 // DNS rebinding: a page on another site points its own name at removarr's address. The
 // browser then sends that name as Host and as Origin, so the two agree, and the page can
 // set any header. Only the Host check tells this apart from removarr's own UI.

@@ -127,6 +127,13 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 // origin, comes from this server's own address.
 func guard(next http.Handler, allowedHosts []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// No answer may be shown in a frame of another page: a site that framed the UI could
+		// lure the user into clicking through a deletion. nosniff keeps a browser from reading
+		// an answer as a type other than the one it is labelled with.
+		h := w.Header()
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		h.Set("X-Content-Type-Options", "nosniff")
 		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/api/health" {
 			next.ServeHTTP(w, r)
 			return
