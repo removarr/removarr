@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Status } from "./types";
+import type { CandidatesResponse, ListKind, Status } from "./types";
 
 // The query keys. A list's candidates are ["candidates", list, ignored].
 export const keys = {
@@ -18,6 +18,14 @@ export function useStatus() {
     queryKey: keys.status,
     queryFn: () => api<Status>("/api/status"),
     refetchInterval: (q) => (q.state.data?.scan.running ? 2000 : 15000),
+  });
+}
+
+// useCandidates loads one list. ignored selects the ignored view (spec 5.2).
+export function useCandidates(list: ListKind, ignored: boolean) {
+  return useQuery({
+    queryKey: [...keys.candidates, list, ignored] as const,
+    queryFn: () => api<CandidatesResponse>(`/api/candidates?list=${list}&ignored=${ignored}`),
   });
 }
 

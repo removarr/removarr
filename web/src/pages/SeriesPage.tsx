@@ -1,3 +1,5 @@
+import { ListPage } from "./ListPage";
+
 export function SeriesPage() {
-  return <h1 className="text-2xl font-semibold">Series</h1>;
+  return <ListPage list="series" />;
 }

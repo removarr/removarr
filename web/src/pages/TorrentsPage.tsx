@@ -1,3 +1,5 @@
+import { ListPage } from "./ListPage";
+
 export function TorrentsPage() {
-  return <h1 className="text-2xl font-semibold">Torrents</h1>;
+  return <ListPage list="torrents" />;
 }
