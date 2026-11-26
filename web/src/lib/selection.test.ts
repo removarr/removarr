@@ -24,7 +24,9 @@ describe("selection", () => {
   });
   it("labels a row by its title, and a season row also by its season", () => {
     expect(rowLabel(a)).toBe("a");
-    expect(rowLabel({ ...a, list: "series", scope: "season", season: 3 })).toBe("a, season 3");
-    expect(rowLabel({ ...a, list: "series", scope: "season", season: 0 })).toBe("a, season 0");
+    const season = (n: number): Candidate => ({ ...a, list: "series", scope: "season", season: n });
+    expect(rowLabel(season(3))).toBe("a, season 3");
+    expect(rowLabel(season(0))).toBe("a, season 0");
+    expect(rowLabel({ title: "a", season: 2 })).toBe("a, season 2");
   });
 });

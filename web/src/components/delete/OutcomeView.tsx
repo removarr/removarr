@@ -1,7 +1,8 @@
 import type { Action, ExecuteResult, Outcome, StepResult } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { formatSize } from "@/lib/format";
-import { describeStep, refLabel } from "./describe";
+import { rowLabel } from "@/lib/selection";
+import { describeStep } from "./describe";
 
 const OUTCOME: Record<Outcome, string> = { done: "Done", failed: "Failed", "dry-run": "Dry run" };
 
@@ -23,7 +24,7 @@ function resultText(s: StepResult): string {
 function stepText(s: StepResult, action: Action): string {
   if (s.manager) {
     const row = action.rows.find((r) => r.key === s.manager!.rowKey);
-    return describeStep(s.manager, row?.title ?? s.manager.rowKey);
+    return describeStep(s.manager, row ? rowLabel(row) : s.manager.rowKey);
   }
   return s.torrent ? s.torrent.name : "Unknown step";
 }
@@ -45,7 +46,7 @@ export function OutcomeView({ result }: { result: ExecuteResult }) {
               <ul className="flex flex-col text-sm">
                 {a.rows.map((r) => (
                   <li key={`${r.list}:${r.key}`}>
-                    <span className="font-medium">{refLabel(r)}</span>{" "}
+                    <span className="font-medium">{rowLabel(r)}</span>{" "}
                     <span className="text-muted-foreground tabular-nums">{formatSize(r.size)}</span>
                     {r.added && <span className="text-xs text-muted-foreground"> (added)</span>}
                   </li>

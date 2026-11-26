@@ -86,11 +86,15 @@ export function useBuildPlan() {
 }
 
 // useExecutePlan executes one confirmed plan (spec 6.11). It is never retried on its own: a
-// plan runs once, and a second request would be refused anyway.
+// plan runs once, and a second request would be refused anyway. When it settles, whatever the
+// answer, it reloads what an execution changes; this runs also when the page that started it
+// is gone, so the lists never show rows that were deleted.
 export function useExecutePlan() {
+  const refresh = useRefreshAfterDelete();
   return useMutation({
     mutationFn: (id: string) =>
       api<ExecuteResult>(`/api/plans/${encodeURIComponent(id)}/execute`, { method: "POST", body: {} }),
+    onSettled: refresh,
   });
 }
 

@@ -5,9 +5,10 @@ import type { Candidate } from "@/api/types";
 // so that a bulk action never names a row that is hidden or gone.
 export type Selection = ReadonlySet<string>;
 
-// rowLabel names a row for the controls that act on it. Season rows of one series carry the
-// series title, so a row with a season adds it; otherwise two rows would share one name.
-export function rowLabel(row: Candidate): string {
+// rowLabel names a row, or a reference to one, wherever the UI names it. Season rows of one
+// series carry the series title, so a row with a season adds it; otherwise two rows would
+// share one name.
+export function rowLabel(row: { title: string; season?: number }): string {
   return row.season === undefined ? row.title : `${row.title}, season ${row.season}`;
 }
 

@@ -34,6 +34,9 @@ export function useDeleteFlow() {
   const run = useRef(0);
   // confirmed holds the plan already sent for execution, so a second press cannot send it again.
   const confirmed = useRef<Plan | null>(null);
+  // started is set by the first press of Delete until the dialog closes, so a double click
+  // builds one plan.
+  const started = useRef(false);
   const build = useBuildPlan();
   const execute = useExecutePlan();
   const refresh = useRefreshAfterDelete();
@@ -52,7 +55,8 @@ export function useDeleteFlow() {
     // start builds the plan for the selected rows. clearSelection is called when the
     // deletion has run.
     start(selected: Candidate[], clearSelection: () => void) {
-      if (state.kind !== "closed") return;
+      if (state.kind !== "closed" || started.current) return;
+      started.current = true;
       rows.current = selected.map(({ list, key }) => ({ list, key }));
       clear.current = clearSelection;
       buildPlan();
@@ -86,6 +90,7 @@ export function useDeleteFlow() {
         // The execution may have run in part: read what it changed.
         refresh();
       }
+      started.current = false;
       setState({ kind: "closed" });
     },
   };

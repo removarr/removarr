@@ -3,7 +3,7 @@ import type { KeptTorrent, Plan, PlanItem, PlanRow, PlanTorrent } from "@/api/ty
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime, formatSize } from "@/lib/format";
 import { rowLabel } from "@/lib/selection";
-import { describeStep, groupByApp, refLabel, type AppGroup } from "./describe";
+import { describeStep, groupByApp, type AppGroup } from "./describe";
 
 const KEPT_REASON: Record<KeptTorrent["reason"], string> = {
   queued: "In a download queue",
@@ -44,7 +44,7 @@ function RowList({ group, plan }: { group: AppGroup; plan: Plan }) {
               <div className="flex flex-wrap gap-1">
                 {r.added && r.addedWith && (
                   <span className="text-xs text-muted-foreground">
-                    {`Added: deleted together with ${refLabel(r.addedWith)}, through ${sharedThrough(r, itemOf(r))}`}
+                    {`Added: deleted together with ${rowLabel(r.addedWith)}, through ${sharedThrough(r, itemOf(r))}`}
                   </span>
                 )}
                 {r.notInScan && <Badge variant="outline">Not in the latest scan</Badge>}
@@ -120,7 +120,7 @@ export function PlanView({ plan, dryRun }: { plan: Plan; dryRun: boolean }) {
         <Group title="qBittorrent">
           {g.qbittorrent.torrents.length > 0 && (
             <>
-              <h4 className="text-xs font-medium text-muted-foreground">Removed with their data</h4>
+              <h4 className="text-xs font-medium text-muted-foreground">Removed</h4>
               <ul className="flex flex-col gap-2 text-sm">
                 {g.qbittorrent.torrents.map((t) => (
                   <Torrent key={t.torrent.id} t={t} />
@@ -147,7 +147,7 @@ export function PlanView({ plan, dryRun }: { plan: Plan; dryRun: boolean }) {
         <Group title="Skipped">
           <ul className="flex flex-col gap-1 text-sm">
             {skipped.map((s) => (
-              <li key={`${s.row.list}:${s.row.key}`}>{`${refLabel(s.row)}: ${s.reason}`}</li>
+              <li key={`${s.row.list}:${s.row.key}`}>{`${rowLabel(s.row)}: ${s.reason}`}</li>
             ))}
           </ul>
         </Group>

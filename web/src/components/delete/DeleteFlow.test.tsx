@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { CandidatesResponse, Plan, Status } from "@/api/types";
@@ -90,11 +90,14 @@ describe("delete flow", () => {
 
     const sonarr = within(dialog).getByRole("region", { name: "Sonarr" });
     expect(within(sonarr).getByText("Show, season 2")).toBeInTheDocument();
-    expect(within(sonarr).getByText("Unmonitor 3 episodes of Show")).toBeInTheDocument();
-    expect(within(sonarr).getByText("Unmonitor season 2 of Show")).toBeInTheDocument();
-    expect(within(sonarr).getByText("Delete 3 episode files of Show")).toBeInTheDocument();
+    expect(within(sonarr).getByText("Unmonitor 3 episodes of Show, season 2")).toBeInTheDocument();
+    expect(within(sonarr).getByText("Unmonitor season 2 (Show, season 2)")).toBeInTheDocument();
+    expect(within(sonarr).getByText("Delete 3 episode files of Show, season 2")).toBeInTheDocument();
 
     const qbit = within(dialog).getByRole("region", { name: "qBittorrent" });
+    // A removed torrent can keep its data, so the heading claims nothing about the data.
+    expect(within(qbit).getByRole("heading", { name: "Removed" })).toBeInTheDocument();
+    expect(within(qbit).queryByText(/with their data/)).not.toBeInTheDocument();
     const pack = within(qbit).getByText("Alpha.Beta.Pack").closest("li") as HTMLElement;
     expect(within(pack).getByText("12.0 GiB")).toBeInTheDocument();
     expect(within(pack).getByText("Below seeding minimum")).toBeInTheDocument();
@@ -154,7 +157,7 @@ describe("delete flow", () => {
     expect(within(itemOf("Alpha.Remux")).getByText("kept its data")).toBeInTheDocument();
     expect(within(itemOf("Alpha.Remux")).getByText("already gone")).toBeInTheDocument();
     expect(within(itemOf("Show.S02.Extra")).getByText("skipped")).toBeInTheDocument();
-    expect(within(itemOf("Delete 3 episode files of Show")).getByText("failed: Sonarr answered 500.")).toBeInTheDocument();
+    expect(within(itemOf("Delete 3 episode files of Show, season 2")).getByText("failed: Sonarr answered 500.")).toBeInTheDocument();
 
     const lists = api.count(LIVE);
     const statuses = api.count(STATUS);
@@ -164,6 +167,47 @@ describe("delete flow", () => {
     expect(queryClient.getQueryState(["actions"])?.isInvalidated).toBe(true);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Selected rows" })).not.toBeInTheDocument();
+    expect(api.count(EXEC)).toBe(1);
+  });
+
+  it("builds one plan when Delete is double-clicked", async () => {
+    const answer = deferred();
+    const api = mockApi({ [STATUS]: ok(statusFixture), [LIVE]: ok(live), [PLANS]: () => answer.promise });
+    const user = userEvent.setup();
+    renderWithProviders(<ListPage list="movies" />);
+    await user.click(await screen.findByRole("checkbox", { name: "Select Alpha" }));
+    const del = within(screen.getByRole("region", { name: "Selected rows" })).getByRole("button", { name: "Delete" });
+    fireEvent.click(del);
+    fireEvent.click(del);
+    await screen.findByRole("dialog");
+    answer.resolve({ status: 201, body: planFixture });
+    await within(screen.getByRole("dialog")).findByText("3 items · 13.0 GiB");
+    expect(api.count(PLANS)).toBe(1);
+  });
+
+  it("refreshes the lists when the page goes away during the execution", async () => {
+    const answer = deferred();
+    const { user, queryClient, unmount } = await openDelete({ [PLANS]: created(planFixture), [EXEC]: () => answer.promise });
+    queryClient.setQueryData(["actions"], { actions: [] });
+    const dialog = await screen.findByRole("dialog");
+    await user.click(await within(dialog).findByRole("button", { name: "Delete" }));
+    unmount();
+    answer.resolve({ status: 200, body: executeFixture });
+    await waitFor(() => expect(queryClient.getQueryState(["candidates", "movies", false])?.isInvalidated).toBe(true));
+    expect(queryClient.getQueryState(["status"])?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(["actions"])?.isInvalidated).toBe(true);
+  });
+
+  it("shows the running job when executing is refused, says nothing ran and does not retry", async () => {
+    const { api } = await openDelete({
+      [PLANS]: created(planFixture),
+      [EXEC]: () => ({ status: 409, body: { error: "A scan is running." } }),
+    });
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.setup().click(await within(dialog).findByRole("button", { name: "Delete" }));
+    expect(await within(dialog).findByText("A scan is running.")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/may have run in part/)).not.toBeInTheDocument();
+    expect(dialogButtons()).toEqual(["Close"]);
     expect(api.count(EXEC)).toBe(1);
   });
 

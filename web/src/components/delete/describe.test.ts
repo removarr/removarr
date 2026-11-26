@@ -21,8 +21,8 @@ describe("describeStep", () => {
     ],
     ["unmonitor-episodes", { ...base, manager: "series", action: "unmonitor-episodes", episodeIds: [1, 2, 3] }, "Unmonitor 3 episodes of Alpha"],
     ["unmonitor-episodes, one", { ...base, manager: "series", action: "unmonitor-episodes", episodeIds: [1] }, "Unmonitor 1 episode of Alpha"],
-    ["unmonitor-seasons, one", { ...base, manager: "series", action: "unmonitor-seasons", seasons: [2] }, "Unmonitor season 2 of Alpha"],
-    ["unmonitor-seasons", { ...base, manager: "series", action: "unmonitor-seasons", seasons: [1, 2, 3] }, "Unmonitor seasons 1, 2, 3 of Alpha"],
+    ["unmonitor-seasons, one", { ...base, manager: "series", action: "unmonitor-seasons", seasons: [2] }, "Unmonitor season 2 (Alpha)"],
+    ["unmonitor-seasons", { ...base, manager: "series", action: "unmonitor-seasons", seasons: [1, 2, 3] }, "Unmonitor seasons 1, 2, 3 (Alpha)"],
     ["delete-episode-files", { ...base, manager: "series", action: "delete-episode-files", fileIds: [5, 6] }, "Delete 2 episode files of Alpha"],
     ["delete-episode-files, one", { ...base, manager: "series", action: "delete-episode-files", fileIds: [5] }, "Delete 1 episode file of Alpha"],
   ])("%s", (_name, step, text) => {
@@ -47,9 +47,9 @@ describe("groupByApp", () => {
   it("puts the series rows and their steps under Sonarr", () => {
     expect(g.sonarr.rows.map((r) => r.row.key)).toEqual(["tvdb:7:2"]);
     expect(g.sonarr.steps.map((s) => [s.step.action, s.title])).toEqual([
-      ["unmonitor-episodes", "Show"],
-      ["unmonitor-seasons", "Show"],
-      ["delete-episode-files", "Show"],
+      ["unmonitor-episodes", "Show, season 2"],
+      ["unmonitor-seasons", "Show, season 2"],
+      ["delete-episode-files", "Show, season 2"],
     ]);
   });
 
@@ -60,6 +60,18 @@ describe("groupByApp", () => {
     expect(g.qbittorrent.kept.map((k) => [k.torrent.id, k.reason])).toEqual([
       ["h3", "queued"],
       ["h4", "backs-library"],
+    ]);
+  });
+
+  it("names the season in the steps, so two season rows of one series can be told apart", () => {
+    const season = (n: number) => ({
+      row: { list: "series" as const, key: `tvdb:8:${n}`, title: "Other", season: n, scope: "season" as const, size: 1, torrents: [], belowSeedMin: false },
+    });
+    const files = (n: number): ManagerStep => ({ manager: "series", action: "delete-episode-files", rowKey: `tvdb:8:${n}`, itemId: 8, fileIds: [n] });
+    const two = groupByApp({ ...planFixture, items: [{ rows: [season(1), season(2)], steps: [files(1), files(2)], torrents: null, kept: null }] });
+    expect(two.sonarr.steps.map((s) => describeStep(s.step, s.title))).toEqual([
+      "Delete 1 episode file of Other, season 1",
+      "Delete 1 episode file of Other, season 2",
     ]);
   });
 

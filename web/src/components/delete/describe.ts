@@ -1,4 +1,5 @@
-import type { KeptTorrent, ManagerStep, Plan, PlanRow, PlanTorrent, RowRef } from "@/api/types";
+import type { KeptTorrent, ManagerStep, Plan, PlanRow, PlanTorrent } from "@/api/types";
+import { rowLabel } from "@/lib/selection";
 
 // The words for a plan, and the plan grouped by the app each part changes (spec 7.4).
 
@@ -8,7 +9,8 @@ function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-// describeStep says in words what a media manager step does to the row titled rowTitle.
+// describeStep says in words what a media manager step does to the row named rowTitle, which
+// is the row's label: a season row's label names its season.
 export function describeStep(step: ManagerStep, rowTitle: string): string {
   const exclusion = step.addExclusion ? EXCLUSION : "";
   switch (step.action) {
@@ -20,16 +22,12 @@ export function describeStep(step: ManagerStep, rowTitle: string): string {
       return `Unmonitor ${count(step.episodeIds?.length ?? 0, "episode", "episodes")} of ${rowTitle}`;
     case "unmonitor-seasons": {
       const seasons = step.seasons ?? [];
-      return `Unmonitor ${seasons.length === 1 ? "season" : "seasons"} ${seasons.join(", ")} of ${rowTitle}`;
+      // "of Show, season 2" would name the season twice: the row goes in parentheses.
+      return `Unmonitor ${seasons.length === 1 ? "season" : "seasons"} ${seasons.join(", ")} (${rowTitle})`;
     }
     case "delete-episode-files":
       return `Delete ${count(step.fileIds?.length ?? 0, "episode file", "episode files")} of ${rowTitle}`;
   }
-}
-
-// refLabel names a row reference the way rowLabel names a row: a season row adds its season.
-export function refLabel(ref: RowRef): string {
-  return ref.season === undefined ? ref.title : `${ref.title}, season ${ref.season}`;
 }
 
 export interface AppGroup {
@@ -43,14 +41,15 @@ const emptyGroup = (): AppGroup => ({ rows: [], steps: [], torrents: [], kept: [
 
 // groupByApp sorts a plan by the app it changes: movie rows and Radarr steps under Radarr,
 // series rows and Sonarr steps under Sonarr, torrent rows and every removed or kept torrent
-// under qBittorrent. A step is titled by the row of its item that it acts on.
+// under qBittorrent. A step is titled by the label of the row of its item that it acts on.
 export function groupByApp(plan: Plan): { radarr: AppGroup; sonarr: AppGroup; qbittorrent: AppGroup } {
   const g = { radarr: emptyGroup(), sonarr: emptyGroup(), qbittorrent: emptyGroup() };
   const byList = { movies: g.radarr, series: g.sonarr, torrents: g.qbittorrent };
   for (const item of plan.items ?? []) {
     for (const r of item.rows) byList[r.row.list].rows.push(r);
     for (const step of item.steps ?? []) {
-      const title = item.rows.find((r) => r.row.key === step.rowKey)?.row.title ?? step.rowKey;
+      const row = item.rows.find((r) => r.row.key === step.rowKey)?.row;
+      const title = row ? rowLabel(row) : step.rowKey;
       (step.manager === "movies" ? g.radarr : g.sonarr).steps.push({ step, title });
     }
     g.qbittorrent.torrents.push(...(item.torrents ?? []));
