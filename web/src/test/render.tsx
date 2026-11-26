@@ -41,7 +41,7 @@ export function renderApp(path: string) {
   return { ...result, queryClient, router };
 }
 
-export type MockResponse ={ status: number; body?: unknown };
+export type MockResponse = { status: number; body?: unknown };
 // A route may answer later: a test that must see a state while a request is pending returns a
 // promise and resolves it when it is done looking.
 export type MockRoutes = Record<string, (init: RequestInit) => MockResponse | Promise<MockResponse>>;

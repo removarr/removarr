@@ -42,6 +42,10 @@ The removarr binary embeds `internal/webui/dist`, so build the UI with `pnpm --d
     pnpm --dir web build
     pnpm --dir web e2e
 
+When port 7373 is taken, for example by a fake server you are looking at, run the end-to-end test on another port with `REMOVARR_E2E_PORT`:
+
+    REMOVARR_E2E_PORT=7374 pnpm --dir web e2e
+
 ## Running
 
     REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr

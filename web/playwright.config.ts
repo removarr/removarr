@@ -10,6 +10,13 @@ import { fileURLToPath } from "node:url";
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "removarr-e2e-"));
 // web/go.mod keeps the go tool out of web/, so the server is run from the repository root.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// REMOVARR_E2E_PORT moves the fake server off 7373, for example when one is already running
+// there. A server already on the port is never reused: the test needs a fresh database.
+const port = Number(process.env.REMOVARR_E2E_PORT || "7373");
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error("REMOVARR_E2E_PORT must be a port number");
+}
+const base = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -18,14 +25,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "list" : [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://127.0.0.1:7373",
+    baseURL: base,
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: `go run ./internal/e2e/fakeserver -port 7373 -dir ${JSON.stringify(dir)}`,
+    command: `go run ./internal/e2e/fakeserver -port ${port} -dir ${JSON.stringify(dir)}`,
     cwd: root,
-    url: "http://127.0.0.1:7373/api/health",
+    url: `${base}/api/health`,
     reuseExistingServer: false,
     // The first run compiles the server.
     timeout: 180_000,

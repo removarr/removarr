@@ -135,6 +135,39 @@ describe("the side panel on a narrow screen", () => {
     await user.click(screen.getByTestId("menu-backdrop"));
     expect(menu()).not.toBeInTheDocument();
     expect(screen.queryByTestId("menu-backdrop")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show menu" })).toHaveFocus();
+  });
+
+  it("makes the header and the page inert while the drawer is open", async () => {
+    narrow();
+    const user = userEvent.setup();
+    const { container } = renderApp("/movies");
+    const header = container.querySelector("header")!;
+    const main = container.querySelector("main")!;
+    expect(header).not.toHaveAttribute("inert");
+    expect(main).not.toHaveAttribute("inert");
+    await user.click(screen.getByRole("button", { name: "Show menu" }));
+    expect(header).toHaveAttribute("inert");
+    expect(main).toHaveAttribute("inert");
+    await user.keyboard("{Escape}");
+    expect(header).not.toHaveAttribute("inert");
+    expect(main).not.toHaveAttribute("inert");
+  });
+
+  it("keeps the focus in the drawer when tabbing past its last or first link", async () => {
+    narrow();
+    const user = userEvent.setup();
+    renderApp("/movies");
+    await user.click(screen.getByRole("button", { name: "Show menu" }));
+    const links = within(menu()!).getAllByRole("link");
+    expect(links[0]).toHaveFocus();
+    for (let i = 1; i < links.length; i++) await user.tab();
+    expect(links[links.length - 1]).toHaveFocus();
+    await user.tab();
+    expect(menu()).toContainElement(document.activeElement as HTMLElement);
+    expect(links[0]).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(links[links.length - 1]).toHaveFocus();
   });
 
   it("closes when a link is chosen and shows its page", async () => {
@@ -145,6 +178,7 @@ describe("the side panel on a narrow screen", () => {
     await user.click(within(menu()!).getByRole("link", { name: "History" }));
     expect(await screen.findByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
     expect(menu()).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show menu" })).toHaveFocus();
   });
 
   it("does not remember the drawer", async () => {

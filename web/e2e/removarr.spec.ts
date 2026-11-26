@@ -45,9 +45,13 @@ test("scan, ignore, delete, history and settings", async ({ page }) => {
     const barBox = await bar.boundingBox();
     expect(barBox!.x).toBeGreaterThanOrEqual(panel!.x + panel!.width - 1);
     expect(barBox!.y + barBox!.height).toBeCloseTo(page.viewportSize()!.height, 0);
+    // In a window this low the last row would sit under the bar without the list's padding.
+    const size = page.viewportSize()!;
+    await page.setViewportSize({ width: size.width, height: 300 });
     await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)");
-    const last = await rows(page).last().boundingBox();
+    const last = await page.getByRole("row").last().boundingBox();
     expect(last!.y + last!.height).toBeLessThanOrEqual((await bar.boundingBox())!.y);
+    await page.setViewportSize(size);
     await bar.getByRole("button", { name: "Ignore", exact: true }).click();
     await expect(rows(page)).toHaveCount(1);
     await expect(page.getByRole("checkbox", { name: "Select Fake Movie Two" })).toHaveCount(0);

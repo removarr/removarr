@@ -107,24 +107,48 @@ export function Shell() {
     if (!wide) setDrawerOpen(false);
   };
 
+  // The open drawer is modal: the header and the page are inert, Tab wraps around its links,
+  // and Escape closes it.
   const drawer = !wide && drawerOpen;
   useEffect(() => {
     if (!drawer) return;
-    panelRef.current?.querySelector("a")?.focus();
+    const links = () => Array.from(panelRef.current?.querySelectorAll("a") ?? []);
+    links()[0]?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setDrawerOpen(false);
-      toggleRef.current?.focus();
+      if (e.key === "Escape") {
+        setDrawerOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const all = links();
+      if (all.length === 0) return;
+      const first = all[0], last = all[all.length - 1];
+      const inside = panelRef.current?.contains(document.activeElement) ?? false;
+      if (e.shiftKey && (!inside || document.activeElement === first)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, [drawer]);
+
+  // However the drawer closed (Escape, the backdrop, a link), the focus goes back to the
+  // toggle. This runs after the header stopped being inert, so the toggle can take it.
+  const wasDrawer = useRef(false);
+  useEffect(() => {
+    if (wasDrawer.current && !drawer) toggleRef.current?.focus();
+    wasDrawer.current = drawer;
   }, [drawer]);
 
   const shellStyle = { "--content-left": wide && open ? PANEL_WIDTH : "0px" } as CSSProperties;
 
   return (
     <div className="flex min-h-svh flex-col" style={shellStyle}>
-      <header className="border-b">
+      <header className="border-b" inert={drawer}>
         <div className="flex flex-wrap items-center gap-4 px-4 py-3">
           <div className="flex items-center gap-2">
             <Button
@@ -188,7 +212,7 @@ export function Shell() {
             </li>
           </ul>
         </nav>
-        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6">
+        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6" inert={drawer}>
           <Outlet />
         </main>
       </div>
