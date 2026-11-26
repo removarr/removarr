@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, rowsBody } from "./client";
-import type { CandidatesResponse, ExecuteResult, ListKind, Plan, Status } from "./types";
+import type { ActionsPage, CandidatesResponse, ExecuteResult, ListKind, Plan, Status } from "./types";
 
 // The query keys. A list's candidates are ["candidates", list, ignored].
 export const keys = {
@@ -26,6 +26,18 @@ export function useCandidates(list: ListKind, ignored: boolean) {
   return useQuery({
     queryKey: [...keys.candidates, list, ignored] as const,
     queryFn: () => api<CandidatesResponse>(`/api/candidates?list=${list}&ignored=${ignored}`),
+  });
+}
+
+// useActions pages through the history, newest first. The server's `next` is the id to pass
+// as `before`; a page without it is the last (spec 5.5).
+export function useActions() {
+  return useInfiniteQuery({
+    queryKey: keys.actions,
+    initialPageParam: undefined as number | undefined,
+    queryFn: ({ pageParam }) =>
+      api<ActionsPage>(`/api/actions?limit=50${pageParam === undefined ? "" : `&before=${pageParam}`}`),
+    getNextPageParam: (last) => last.next,
   });
 }
 

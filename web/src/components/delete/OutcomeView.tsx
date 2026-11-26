@@ -1,33 +1,10 @@
-import type { Action, ExecuteResult, Outcome, StepResult } from "@/api/types";
+import type { ExecuteResult, Outcome } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { formatSize } from "@/lib/format";
 import { rowLabel } from "@/lib/selection";
-import { describeStep } from "./describe";
+import { StepLine } from "./StepLine";
 
 const OUTCOME: Record<Outcome, string> = { done: "Done", failed: "Failed", "dry-run": "Dry run" };
-
-function resultText(s: StepResult): string {
-  switch (s.result) {
-    case "done":
-      return "done";
-    case "failed":
-      return s.error ? `failed: ${s.error}` : "failed";
-    case "skipped":
-      return "skipped";
-    case "gone":
-      return "already gone";
-    case "dry-run":
-      return "dry run";
-  }
-}
-
-function stepText(s: StepResult, action: Action): string {
-  if (s.manager) {
-    const row = action.rows.find((r) => r.key === s.manager!.rowKey);
-    return describeStep(s.manager, row ? rowLabel(row) : s.manager.rowKey);
-  }
-  return s.torrent ? s.torrent.name : "Unknown step";
-}
 
 // OutcomeView shows what an execution did (spec 7.4, step 6): per item its rows, its outcome
 // and every step with its result, failures with the app's error.
@@ -58,17 +35,7 @@ export function OutcomeView({ result }: { result: ExecuteResult }) {
             </div>
             <ol className="flex list-decimal flex-col gap-0.5 pl-5 text-sm">
               {a.steps.map((s, i) => (
-                <li key={i} className={s.result === "failed" ? "text-destructive" : undefined}>
-                  <span className="break-all">{stepText(s, a)}</span>
-                  {" — "}
-                  <span>{resultText(s)}</span>
-                  {s.torrent && s.keepData && (
-                    <>
-                      {", "}
-                      <span>kept its data</span>
-                    </>
-                  )}
-                </li>
+                <StepLine key={i} step={s} rows={a.rows} />
               ))}
             </ol>
           </li>

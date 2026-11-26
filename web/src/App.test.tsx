@@ -11,6 +11,7 @@ import { routes } from "./App";
 beforeEach(() => {
   const list = (name: string) => () => ({ status: 200, body: { list: name, scannedAt: null, candidates: null } });
   mockApi({
+    "GET /api/actions?limit=50": () => ({ status: 200, body: { actions: [] } }),
     "GET /api/candidates?list=movies&ignored=false": list("movies"),
     "GET /api/candidates?list=series&ignored=false": list("series"),
     "GET /api/candidates?list=torrents&ignored=false": list("torrents"),
