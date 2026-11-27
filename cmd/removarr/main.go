@@ -26,6 +26,14 @@ import (
 )
 
 func main() {
+	cmd, err := command(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if cmd == "healthcheck" {
+		os.Exit(runHealthcheck(os.Getenv, os.Stderr))
+	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if err := run(log); err != nil {
 		log.Error("removarr stopped", "error", err)

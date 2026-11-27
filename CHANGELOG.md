@@ -10,6 +10,30 @@ What changed in removarr, written for the person who runs it.
 
 ## Unreleased
 
+### Stage 4: packaging (issue #7)
+
+removarr now ships as a container image, with a compose example and a README for installing and running it.
+
+#### Scope
+
+- **Image:** `ghcr.io/removarr/removarr` for `linux/arm64` and `linux/amd64`, about 16 MB. It runs as a non-root user (uid and gid 65532) on a distroless base, holds only the binary, and keeps its database in the one volume, `/config`.
+- **Health check:** the image checks itself with `removarr healthcheck`, which asks `/api/health` on the local port; `docker ps` shows `healthy`.
+- **Command line:** `removarr` without arguments serves as before; `removarr healthcheck` runs the check and exits 0 when healthy, 1 when not. Any other argument is refused with exit code 2.
+- **Compose example:** `docker-compose.yml` with a named volume, dry run on, `host.docker.internal` for apps on the host, and 150 seconds to stop so that a running execution can finish its item.
+- **README:** installing, configuration, keeping the config in a directory, reaching apps on the host, host names and reverse proxies, what the lists mean and the limits of linking torrents to files, what Delete does, and releasing.
+- **Releases:** publishing a GitHub release `vX.Y.Z` builds both architectures, smoke-tests the image and pushes the tags `X.Y.Z`, `X.Y`, `X` and `latest`; a release marked as pre-release on GitHub, or whose tag has a suffix such as `-rc.1`, gets only its own version tag.
+- **CI:** every pull request now also checks formatting, runs the Go tests with the race detector, builds the binary, builds the image for both architectures and smoke-tests it.
+
+#### Deployment
+
+- New installs: see "Installing" in the README. Start with `REMOVARR_DRY_RUN=true`.
+- A `/config` bind mount must be writable by uid 65532, or the container must run as the directory's owner; otherwise removarr stops at start with an error about opening the database.
+- Give the container more than two minutes to stop (`stop_grace_period: 150s`, `docker stop -t 150`).
+
+#### Breaking changes
+
+- A command-line argument other than `healthcheck` used to be ignored; removarr now refuses to start with it.
+
 ### Stage 3: the web UI (issue #6)
 
 removarr now has a web UI, served by the same binary on the same port. Everything the API offers can be done in the browser.
@@ -60,7 +84,7 @@ removarr can now carry out a plan. This is the first stage that changes your app
 #### Deployment
 
 - Database migration `0004_actions` runs on start, adds the `actions` table and discards plans built by an earlier version: build them again.
-- Give removarr more than two minutes to stop before it is killed, so an execution that is running can record its last item: Docker waits 10 seconds by default (`docker stop -t 130`, or `stop_grace_period: 130s` in Compose), systemd 90 seconds (`TimeoutStopSec=130`).
+- Give removarr more than two minutes to stop before it is killed, so an execution that is running can record its last item: Docker waits 10 seconds by default (`docker stop -t 150`, or `stop_grace_period: 150s` in Compose), systemd 90 seconds (`TimeoutStopSec=150`).
 - Start with `REMOVARR_DRY_RUN=true`, execute a plan, and compare the history with the plan before you delete for real.
 
 #### Breaking changes
