@@ -10,6 +10,23 @@ What changed in removarr, written for the person who runs it.
 
 ## Unreleased
 
+### Logo
+
+removarr has a logo: a film frame with a broom sweeping across it.
+
+#### Scope
+
+- **Web UI:** the logo is the browser tab's icon and stands beside the name in the top bar.
+- **README:** the logo heads the page.
+
+#### Deployment
+
+Nothing to do.
+
+#### Breaking changes
+
+None.
+
 ### Stage 4: packaging (issue #7)
 
 removarr now ships as a container image, with a compose example and a README for installing and running it.

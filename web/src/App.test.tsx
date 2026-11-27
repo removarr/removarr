@@ -66,4 +66,13 @@ describe("the app shell", () => {
     renderAt("/movies");
     expect(screen.getByText("removarr")).toBeInTheDocument();
   });
+
+  it("shows the logo beside the name in the top bar", () => {
+    renderAt("/movies");
+    const logo = screen.getByTestId("app-logo");
+    expect(logo).toHaveAttribute("src", "/logo.svg");
+    // The name is next to it, so the image is decorative.
+    expect(logo).toHaveAttribute("alt", "");
+    expect(logo.parentElement).toHaveTextContent("removarr");
+  });
 });

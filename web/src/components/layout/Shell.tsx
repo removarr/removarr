@@ -148,7 +148,10 @@ export function Shell() {
               >
                 {open ? <PanelLeftClose aria-hidden="true" /> : <PanelLeftOpen aria-hidden="true" />}
               </Button>
-              <span className="text-lg font-semibold">removarr</span>
+              <span className="flex items-center gap-2 text-lg font-semibold">
+                <img data-testid="app-logo" src="/logo.svg" alt="" className="size-7 rounded-md" />
+                removarr
+              </span>
             </>
           }
         />
