@@ -20,7 +20,7 @@ The same with `docker run`:
       -p 7272:7272 \
       -v removarr-config:/config \
       --add-host host.docker.internal:host-gateway \
-      --stop-timeout 130 \
+      --stop-timeout 150 \
       -e REMOVARR_DRY_RUN=true \
       ghcr.io/removarr/removarr:latest
 
@@ -67,7 +67,7 @@ A named volume needs nothing: it takes over the owner of the image's `/config`, 
 
 or run the container as the user who owns the directory, with `user: "1000:1000"` under the service in the compose file (`--user 1000:1000` for `docker run`). Then mount it: `./config:/config`.
 
-If the user cannot write to the directory, removarr stops at start with an error about the database, with an error about opening the database.
+If the user cannot write to the directory, removarr stops at start with an error about opening the database.
 
 To back up, stop removarr and copy `removarr.db` from the config directory.
 
@@ -117,13 +117,13 @@ The image checks itself every 30 seconds with `removarr healthcheck`, and `docke
 
 ## Stopping
 
-When removarr is stopped during an execution, it starts no further item and waits up to two minutes for the one it is running to finish and be recorded. Give it more than that before it is killed: Docker waits 10 seconds by default. The compose example sets `stop_grace_period: 130s`; for `docker run`, use `--stop-timeout 130`. With systemd, use `TimeoutStopSec=130`.
+When removarr is stopped during an execution, it starts no further item and waits up to two minutes for the one it is running to finish and be recorded, after up to 10 seconds to finish the requests being served. Give it more than that before it is killed: Docker waits 10 seconds by default. The compose example sets `stop_grace_period: 150s`; for `docker run`, use `--stop-timeout 150`. With systemd, use `TimeoutStopSec=150`.
 
 ## What the lists mean
 
 **Movies.** A movie is listed when the counting users have watched it (all of them, or any one, as the watched mode says), the grace period has passed, and it is not protected. A movie with no match in Jellyfin is never listed.
 
-**Series.** A series is listed when every regular season that has files qualifies: each episode with a file is watched and past the grace period. A setting chooses the unit, the whole series or one row per season. A series or season that is still airing is listed, with the label "still airing". Deleting it unmonitors only the seasons that have finished airing and keeps the series in Sonarr, so upcoming episodes still download. Specials never block a series and never get their own row; they go only when the whole series is removed from Sonarr.
+**Series.** A series is listed when every regular season that has files qualifies: each episode with a file is watched and past the grace period. A setting chooses the unit, the whole series or one row per season. A series that is still airing is listed, with the label "still airing" (season rows never carry it). Deleting it removes the files of the watched episodes, unmonitors those episodes and the seasons that have finished airing, and keeps the series in Sonarr, so upcoming episodes still download. Specials never block a series and never get their own row; they go only when the whole series is removed from Sonarr.
 
 **Torrents.** A torrent is listed when it is in qBittorrent but no longer backs any library file. An orphan is a torrent that no media manager knows. An unlinked torrent is one that a media manager's history knows, but that backs no current library file, for example after an upgrade replaced the release. A torrent that is in a media manager's queue is never listed, and torrents in an excluded category or with an excluded tag are left out of orphan detection. Each row shows the reason and a seeding flag.
 
@@ -147,8 +147,9 @@ Delete first builds a plan from live data and shows it. Nothing runs before you 
 - **Movie:** removed from Radarr, with its files.
 - **Series, ended:** removed from Sonarr, with its files.
 - **Series, still airing, or a season:** the episodes that have files are unmonitored and their files deleted. A season is unmonitored only if it has finished airing. The series stays in Sonarr.
-- **Torrents:** after that, each torrent tied to the deleted items that is not in a media manager's queue and no longer backs any library file is removed from qBittorrent, with its data. A torrent is removed as a whole.
+- **Torrents:** after that, each torrent associated with the deleted items that is not in a media manager's queue and no longer backs any library file is removed from qBittorrent, with its data. A torrent is removed as a whole.
 - **Orphan or unlinked torrent:** the torrent is removed, with its data. Nothing changes in Sonarr or Radarr.
+- **Tied rows:** a plan may add rows you did not select, because they share a torrent or a file with a selected row. They are deleted together with it, and the plan shows them, marked, before you confirm.
 
 A torrent keeps its data, and only its entry is removed, when another torrent that stays has the same content path or one inside the other, or when its content path is not known.
 
@@ -253,7 +254,7 @@ For maintainers.
 
 1. On `main`, move "Unreleased" in `CHANGELOG.md` under the version, with its date.
 2. Publish a GitHub release with the tag `vX.Y.Z`.
-3. The `image` workflow builds the image, runs the smoke test, and pushes it as `X.Y.Z`, `X.Y`, `X` and `latest`. A pre-release gets only its own version tag.
+3. The `image` workflow builds the image, runs the smoke test, and pushes it as `X.Y.Z`, `X.Y`, `X` and `latest`. A release marked as pre-release on GitHub, or whose tag has a suffix such as `-rc.1`, gets only its own version tag.
 4. Check that `ghcr.io/removarr/removarr:X.Y.Z` pulls on both architectures.
 
 Before the first release: do the manual pass on the reference stack, with dry run on and then off. Make the repository public right before publishing the release, and make the package public on ghcr.io after the first push.
