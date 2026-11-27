@@ -29,6 +29,7 @@ wait_healthy() {
     status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$name" 2>/dev/null || echo gone)
     case $status in
       healthy) return 0 ;;
+      unhealthy) fail "the container reports unhealthy" ;;
       none) fail "the image has no health check" ;;
       gone) fail "the container stopped" ;;
     esac
@@ -39,21 +40,22 @@ wait_healthy() {
 
 user=$(docker image inspect -f '{{.Config.User}}' "$image")
 case $user in
-  "" | root | 0 | 0:*) fail "the image runs as root (user '$user')" ;;
+  "" | root | root:* | 0 | 0:*) fail "the image runs as root (user '$user')" ;;
 esac
 
 docker volume create "$volume" >/dev/null
 docker run -d --name "$name" -v "$volume:/config" -p 127.0.0.1::7272 "$image" >/dev/null
 wait_healthy
 
-addr=$(docker port "$name" 7272/tcp | head -1)
+addr=$(docker port "$name" 7272/tcp | head -1) || fail "no published port"
 base="http://$addr"
 curl -fsS -X PUT -H 'Content-Type: application/json' -H 'X-Removarr-Request: 1' \
   -d '{"rules":{"graceDays":17}}' "$base/api/settings" >/dev/null || fail "saving a setting was refused"
 
 docker restart "$name" >/dev/null
 wait_healthy
-addr=$(docker port "$name" 7272/tcp | head -1)
-curl -fsS "http://$addr/api/settings" | grep -q '"graceDays":17' || fail "the saved setting did not survive a restart"
+addr=$(docker port "$name" 7272/tcp | head -1) || fail "no published port"
+settings=$(curl -fsS "http://$addr/api/settings") || fail "reading the settings after the restart failed"
+grep -q '"graceDays":17' <<<"$settings" || fail "the saved setting did not survive a restart"
 
 echo "smoke test passed: $image (user $user)"
