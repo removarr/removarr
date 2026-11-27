@@ -33,7 +33,7 @@ services:
       - "host.docker.internal:host-gateway"
     # An execution that is running finishes its item before removarr stops; that can take
     # up to two minutes. Docker would kill removarr after 10 seconds.
-    stop_grace_period: 130s
+    stop_grace_period: 150s
 
 volumes:
   removarr-config:
