@@ -67,7 +67,7 @@ A named volume needs nothing: it takes over the owner of the image's `/config`, 
 
 or run the container as the user who owns the directory, with `user: "1000:1000"` under the service in the compose file (`--user 1000:1000` for `docker run`). Then mount it: `./config:/config`.
 
-If the user cannot write to the directory, removarr stops at start with an error about the database, for example `open /config/removarr.db: permission denied`.
+If the user cannot write to the directory, removarr stops at start with an error about the database, with an error about opening the database.
 
 To back up, stop removarr and copy `removarr.db` from the config directory.
 
@@ -77,13 +77,15 @@ Apps installed natively on the same machine are reached from the container as `h
 
 The app has to listen on an address the container can reach, not only on `127.0.0.1`. Settings to check, depending on the app:
 
+- qBittorrent's "Bypass authentication for clients on localhost" does not apply to the container. Give removarr a user name and password. Adding the Docker network to qBittorrent's whitelist is the alternative.
 - Sonarr and Radarr: the "Bind Address" should be `*`.
 - Jellyfin listens on all addresses by default.
 - qBittorrent: the Web UI address should be `*`.
-- qBittorrent's "Bypass authentication for clients on localhost" does not apply to the container. Give removarr a user name and password, or add the Docker network to the whitelist.
 - If qBittorrent's host header validation is on, add `host.docker.internal` to its server domains.
 
-Alternatives: use the host's LAN address, or set `network_mode: host`. With `network_mode: host`, `ports` is ignored and removarr listens on the host's port 7272.
+Binding an app to every address, or whitelisting the Docker network, widens who can reach that app. Do it only on a network you trust.
+
+Alternatives: use the host's LAN address, or set `network_mode: host`. With `network_mode: host`, `ports` is ignored and removarr listens on port 7272 of every interface of the host, and the `127.0.0.1:7272:7272` mapping no longer applies. A firewall or the host's own setup must then limit who can reach port 7272.
 
 Apps that run in other containers: put removarr on the same Docker network and use the service name, for example `http://sonarr:8989`.
 
@@ -121,11 +123,11 @@ When removarr is stopped during an execution, it starts no further item and wait
 
 **Movies.** A movie is listed when the counting users have watched it (all of them, or any one, as the watched mode says), the grace period has passed, and it is not protected. A movie with no match in Jellyfin is never listed.
 
-**Series.** A series is listed when every regular season that has files qualifies: each episode with a file is watched and past the grace period. A setting chooses the unit, the whole series or one row per season. A season that is still airing waits. Specials never block a series and never get their own row; they go only when the whole series is removed from Sonarr.
+**Series.** A series is listed when every regular season that has files qualifies: each episode with a file is watched and past the grace period. A setting chooses the unit, the whole series or one row per season. A series or season that is still airing is listed, with the label "still airing". Deleting it unmonitors only the seasons that have finished airing and keeps the series in Sonarr, so upcoming episodes still download. Specials never block a series and never get their own row; they go only when the whole series is removed from Sonarr.
 
-**Torrents.** A torrent is listed when it is in qBittorrent but no longer backs any library file. An orphan is a torrent that no media manager knows. An unlinked torrent is one that a media manager's history knows, but that backs no current library file, for example after an upgrade replaced the release. Each row shows the reason and a seeding flag.
+**Torrents.** A torrent is listed when it is in qBittorrent but no longer backs any library file. An orphan is a torrent that no media manager knows. An unlinked torrent is one that a media manager's history knows, but that backs no current library file, for example after an upgrade replaced the release. A torrent that is in a media manager's queue is never listed, and torrents in an excluded category or with an excluded tag are left out of orphan detection. Each row shows the reason and a seeding flag.
 
-Protected items are never listed: favourites of a counting user, and anything that carries the protection tag (`keep` by default) in Sonarr or Radarr. An item that is not clearly watched counts as unwatched, and an item whose torrent is shared with something that stays waits instead of being listed.
+Protected items are never listed: favourites of a counting user (when "Protect favourites" is on, as it is by default), and anything that carries the protection tag (`keep` by default) in Sonarr or Radarr. An item that is not clearly watched counts as unwatched, and an item whose torrent is shared with something that stays waits instead of being listed.
 
 ### Limits of linking torrents to files
 
@@ -137,6 +139,20 @@ removarr links a torrent to library files through the history and the queue of S
 - Two unrelated files of exactly the same size would be linked.
 
 A torrent is removed as a whole or stays as a whole. removarr never deletes part of what a torrent holds. When unsure, it counts a movie or episode as unwatched, and it keeps a torrent's data.
+
+## What Delete does
+
+Delete first builds a plan from live data and shows it. Nothing runs before you confirm the plan, and a plan expires after ten minutes. For each item, the media manager step comes first and the torrents after it. If a step fails, the steps after it for that item are skipped, and the other items continue.
+
+- **Movie:** removed from Radarr, with its files.
+- **Series, ended:** removed from Sonarr, with its files.
+- **Series, still airing, or a season:** the episodes that have files are unmonitored and their files deleted. A season is unmonitored only if it has finished airing. The series stays in Sonarr.
+- **Torrents:** after that, each torrent tied to the deleted items that is not in a media manager's queue and no longer backs any library file is removed from qBittorrent, with its data. A torrent is removed as a whole.
+- **Orphan or unlinked torrent:** the torrent is removed, with its data. Nothing changes in Sonarr or Radarr.
+
+A torrent keeps its data, and only its entry is removed, when another torrent that stays has the same content path or one inside the other, or when its content path is not known.
+
+With dry run on, every step is recorded in the history as it would have run, and nothing that changes an app is sent.
 
 ## Development
 
@@ -237,7 +253,7 @@ For maintainers.
 
 1. On `main`, move "Unreleased" in `CHANGELOG.md` under the version, with its date.
 2. Publish a GitHub release with the tag `vX.Y.Z`.
-3. The `image` workflow builds the image, runs the smoke test, and pushes it as `X.Y.Z`, `X.Y`, `X` and `latest`.
+3. The `image` workflow builds the image, runs the smoke test, and pushes it as `X.Y.Z`, `X.Y`, `X` and `latest`. A pre-release gets only its own version tag.
 4. Check that `ghcr.io/removarr/removarr:X.Y.Z` pulls on both architectures.
 
 Before the first release: do the manual pass on the reference stack, with dry run on and then off. Make the repository public right before publishing the release, and make the package public on ghcr.io after the first push.
