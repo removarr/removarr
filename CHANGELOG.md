@@ -12,11 +12,11 @@ What changed in removarr, written for the person who runs it.
 
 Nothing yet.
 
-## 1.0.0 (2026-11-27)
+## 0.1.0 (2026-11-27)
 
 The first release. removarr scans Jellyfin, Sonarr, Radarr and qBittorrent, shows watched movies, watched series and orphan torrents in a web UI, and deletes what you select after you confirm the plan, recording each deletion in a history. It ships as the container image `ghcr.io/removarr/removarr` for `linux/arm64` and `linux/amd64`.
 
-Nothing to upgrade from: install it as "Installing" in the README describes, with `REMOVARR_DRY_RUN=true` to start. The stages below record how version 1 was built; their deployment notes and breaking changes concern development builds only.
+Nothing to upgrade from: install it as "Installing" in the README describes, with `REMOVARR_DRY_RUN=true` to start. The stages below record how this first version was built; their deployment notes and breaking changes concern development builds only.
 
 ### Logo
 

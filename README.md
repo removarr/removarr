@@ -4,7 +4,7 @@
 
 removarr suggests what to delete from a self-hosted media server: watched movies, watched series and orphan torrents. It reads Jellyfin, Sonarr, Radarr and qBittorrent over their APIs. It never deletes anything on its own: you select the rows, check the plan, and confirm.
 
-This is version 1. removarr scans the four apps, shows the three suggestion lists in a web UI, and deletes what you select after you confirm the plan, recording each deletion in a history. It runs as a container image for `linux/arm64` and `linux/amd64`. The design is in `docs/superpowers/specs/2026-11-18-removarr-design.md`.
+This is the first version. removarr scans the four apps, shows the three suggestion lists in a web UI, and deletes what you select after you confirm the plan, recording each deletion in a history. It runs as a container image for `linux/arm64` and `linux/amd64`. The design is in `docs/superpowers/specs/2026-11-18-removarr-design.md`.
 
 ## Do not expose it to the internet
 
@@ -26,7 +26,7 @@ The same with `docker run`:
       -e REMOVARR_DRY_RUN=true \
       ghcr.io/removarr/removarr:latest
 
-The image is `ghcr.io/removarr/removarr`, tagged `latest` and with each version, for example `ghcr.io/removarr/removarr:1.0.0`. It is built for `linux/arm64` and `linux/amd64`; the arm64 image is about 16 MB.
+The image is `ghcr.io/removarr/removarr`, tagged `latest` and with each version, for example `ghcr.io/removarr/removarr:0.1.0`. It is built for `linux/arm64` and `linux/amd64`; the arm64 image is about 16 MB.
 
 To update, pull the new image and start the container again:
 
