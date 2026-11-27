@@ -1,3 +1,5 @@
+<p align="center"><img src="web/public/logo.svg" alt="removarr logo: a film frame with a broom sweeping across it" width="128"></p>
+
 # removarr
 
 removarr suggests what to delete from a self-hosted media server: watched movies, watched series and orphan torrents. It reads Jellyfin, Sonarr, Radarr and qBittorrent over their APIs. It never deletes anything on its own: you select the rows, check the plan, and confirm.
