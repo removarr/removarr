@@ -95,7 +95,7 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 
 - 2026-11-27. **podman builds OCI images by default, and the OCI format has no health check:** `HEALTHCHECK` is dropped with a warning and the container never reports healthy. Build with `podman build --format docker`. Docker's buildx keeps it.
 - 2026-11-27. **corepack picks the pnpm version from `packageManager` in the working directory's `package.json`.** `pnpm --dir web` run from the parent directory got a different pnpm; the image's web stage works in `web/` (`Dockerfile`).
-- 2026-11-27. **A named volume takes the owner and mode of the image's directory; a bind mount keeps the host's.** `/config` is created in the image as 65532:65532 with mode 0700, so a named volume works at once, and a root-owned bind mount ends removarr at start with `permission denied` on the database (spec 11).
+- 2026-11-27. **A named volume takes the owner and mode of the image's directory; a bind mount keeps the host's.** `/config` is created in the image as 65532:65532 with mode 0700, so a named volume works at once (observed with podman; that BuildKit keeps the mode is not checked yet), and a root-owned bind mount ends removarr at start with `permission denied` on the database (spec 11).
 - 2026-11-27. **An amd64 image runs on an Apple Silicon Mac under podman's emulation**, slowly: about 30 seconds to healthy, against about one second natively. Enough to smoke-test both architectures locally (`scripts/smoke-image.sh`).
 
 ## Checking against real apps
