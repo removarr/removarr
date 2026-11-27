@@ -30,6 +30,9 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 | `internal/webui` | Embeds the built UI and serves it outside `/api/` |
 | `internal/e2e` | The real API on in-memory fake apps, for the end-to-end test. Never point it at a real config directory |
 | `web` | The browser UI: Vite, React, TypeScript. Builds into `internal/webui/dist` |
+| `Dockerfile`, `.dockerignore`, `docker-compose.yml` | The container image and the compose example (spec 11). `.dockerignore` lists the only paths a build may use |
+| `scripts/smoke-image.sh` | Smoke test for a built image: healthy, non-root, a saved setting survives a restart |
+| `.github/workflows` | `ci.yml`: the Go and web checks. `image.yml`: builds and smoke-tests the image on every pull request, and pushes it for a published release |
 | `docs/superpowers` | Spec and implementation plans |
 | `.agents/skills` | Skills for coding agents, in the Agent Skills format. `implement-issue` is the way of working for one issue, with the scripts for its review steps; they need `gh` |
 | `.claude/skills` | One link per skill into `.agents/skills`, because Claude Code looks for skills here. A new skill needs its link |
@@ -56,7 +59,14 @@ pnpm --dir web build
 pnpm --dir web e2e      # needs `pnpm --dir web exec playwright install chromium` once
 ```
 
-CI runs `go vet`, `go test` and every web check, `e2e` included, on every pull request.
+CI runs `gofmt`, `go vet`, `go test -race ./...`, `go build` and every web check, `e2e` included, on every pull request. It also builds the image for both architectures and runs the smoke test on the amd64 one.
+
+The image check, when the Dockerfile, `.dockerignore`, the smoke test or how the binary starts changes. With podman behind the `docker` CLI, build with `podman build --format docker`: the default OCI format drops the health check.
+
+```
+docker build -t removarr:smoke .
+scripts/smoke-image.sh removarr:smoke
+```
 
 To start the server from the source tree. It runs until it is stopped, so it is not a check:
 
@@ -94,6 +104,7 @@ REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
 - Branch from `main`. Never push to `main` and never force-push. One pull request per work package.
 - Commit subject: `type: what changed`, in lower case, with one of `feat`, `fix`, `docs`, `test`, `chore`. The body says why.
 - Before a pull request: the checks pass and `CHANGELOG.md` is updated.
+- A release is the owner's: publishing a GitHub release pushes the image. Never create a release or a tag, and never change a repository or package setting.
 
 ## Files to keep up to date
 

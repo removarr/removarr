@@ -91,6 +91,13 @@ Most entries about the apps were observed on the reference stack: Sonarr 4.0.12,
 - 2026-11-24. **A deadline on a job must not cover its record.** The store honours the context, so once an execution's time limit passed, `RecordAction` failed at `BeginTx`: an item that had already deleted something was not in the history, and the rest of the plan vanished. The executor records each item on its own bounded context, detached from the request and from the execution's deadline (`internal/executor`).
 - 2026-11-22. **The database path goes into the `file:` DSN unescaped.** A `%`, `?` or `#` in the config directory breaks opening it. Still open, listed in the follow-ups issue.
 
+## Container image
+
+- 2026-11-27. **podman builds OCI images by default, and the OCI format has no health check:** `HEALTHCHECK` is dropped with a warning and the container never reports healthy. Build with `podman build --format docker`. Docker's buildx keeps it.
+- 2026-11-27. **corepack picks the pnpm version from `packageManager` in the working directory's `package.json`.** `pnpm --dir web` run from the parent directory got a different pnpm; the image's web stage works in `web/` (`Dockerfile`).
+- 2026-11-27. **A named volume takes the owner and mode of the image's directory; a bind mount keeps the host's.** `/config` is created in the image as 65532:65532 with mode 0700, so a named volume works at once, and a root-owned bind mount ends removarr at start with `permission denied` on the database (spec 11).
+- 2026-11-27. **An amd64 image runs on an Apple Silicon Mac under podman's emulation**, slowly: about 30 seconds to healthy, against about one second natively. Enough to smoke-test both architectures locally (`scripts/smoke-image.sh`).
+
 ## Checking against real apps
 
 - 2026-11-19. **Verify a list by computing it a second time from the apps' raw answers**, with a separate script, and compare row by row. This is how the torrents that still held library files were found; no unit test could have shown them.
