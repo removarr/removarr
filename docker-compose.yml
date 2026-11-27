@@ -1,0 +1,39 @@
+# removarr: suggests what to delete from a self-hosted media server.
+# Run only on a network you trust. removarr has no login; never expose it to the internet.
+services:
+  removarr:
+    image: ghcr.io/removarr/removarr:latest
+    container_name: removarr
+    restart: unless-stopped
+    ports:
+      - "7272:7272"
+    volumes:
+      # A named volume belongs to the image's user (uid 65532). For a directory of the host
+      # instead, see "Keeping the config in a directory" in the README.
+      - removarr-config:/config
+    environment:
+      # Host names you open removarr by, besides its IP address and localhost. Without the
+      # name here a browser gets "403". List the reverse proxy's name too if you use one.
+      # REMOVARR_ALLOWED_HOSTS: pi.local,removarr.example.lan
+      # Start with a dry run: executing a plan then changes nothing in your apps.
+      REMOVARR_DRY_RUN: "true"
+      # Connections can also be set in the UI, under Settings, Connections; the UI wins.
+      # Apps on this machine outside Docker are reached through host.docker.internal.
+      # REMOVARR_JELLYFIN_URL: http://host.docker.internal:8096
+      # REMOVARR_JELLYFIN_API_KEY: ...
+      # REMOVARR_SONARR_URL: http://host.docker.internal:8989
+      # REMOVARR_SONARR_API_KEY: ...
+      # REMOVARR_RADARR_URL: http://host.docker.internal:7878
+      # REMOVARR_RADARR_API_KEY: ...
+      # REMOVARR_QBITTORRENT_URL: http://host.docker.internal:8080
+      # REMOVARR_QBITTORRENT_USERNAME: ...
+      # REMOVARR_QBITTORRENT_PASSWORD: ...
+    extra_hosts:
+      # Lets the container reach apps that run on the host itself (needed on Linux).
+      - "host.docker.internal:host-gateway"
+    # An execution that is running finishes its item before removarr stops; that can take
+    # up to two minutes. Docker would kill removarr after 10 seconds.
+    stop_grace_period: 130s
+
+volumes:
+  removarr-config:
