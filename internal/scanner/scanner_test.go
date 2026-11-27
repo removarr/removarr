@@ -911,3 +911,46 @@ func TestAPanickingScanFreesTheGateAndReportsIt(t *testing.T) {
 	}
 	release()
 }
+
+func TestScanRecordsTheSettingsFingerprintFromItsStart(t *testing.T) {
+	p, _ := world()
+	st := &fakeStore{}
+	svc := service(p, withUser(), st)
+	var calls []string
+	svc.Fingerprint = func(context.Context) (string, error) {
+		calls = append(calls, "fingerprint")
+		return "fp-1", nil
+	}
+	rules := svc.Rules
+	svc.Rules = func(ctx context.Context) (domain.Rules, error) {
+		calls = append(calls, "rules")
+		return rules(ctx)
+	}
+
+	if err := svc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) == 0 || calls[0] != "fingerprint" {
+		t.Errorf("calls = %v, want the fingerprint first", calls)
+	}
+	if st.summary.SettingsFingerprint != "fp-1" {
+		t.Errorf("stored fingerprint = %q, want fp-1", st.summary.SettingsFingerprint)
+	}
+}
+
+func TestScanFailsWhenTheFingerprintCannotBeRead(t *testing.T) {
+	p, _ := world()
+	st := &fakeStore{}
+	svc := service(p, withUser(), st)
+	svc.Fingerprint = func(context.Context) (string, error) { return "", errors.New("boom") }
+
+	if err := svc.Run(ctx); err == nil {
+		t.Fatal("want an error")
+	}
+	if st.begun != 0 || st.finished != 0 {
+		t.Errorf("recorded %d starts and %d finishes, want none", st.begun, st.finished)
+	}
+	if status := svc.Status(); !strings.Contains(status.LastError, "boom") {
+		t.Errorf("status = %+v, want the error kept", status)
+	}
+}

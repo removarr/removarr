@@ -15,3 +15,31 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test ./...
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          # The action reads the pnpm version from packageManager; web/ is not the root.
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      # The end-to-end test runs the fake server (internal/e2e/fakeserver), which embeds the
+      # build above.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e

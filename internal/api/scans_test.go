@@ -218,3 +218,58 @@ func TestStatus(t *testing.T) {
 		t.Errorf("lastScan = %+v", got.LastScan)
 	}
 }
+
+// storeScanWithFingerprint saves a finished scan whose summary carries the given fingerprint.
+func storeScanWithFingerprint(t *testing.T, h *harness, fingerprint string) {
+	t.Helper()
+	ctx := context.Background()
+	started := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	id, err := h.store.BeginScan(ctx, started)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := domain.ScanSummary{
+		Lists:               map[domain.ListKind]domain.ListSummary{domain.ListMovies: {}},
+		SettingsFingerprint: fingerprint,
+	}
+	if err := h.store.FinishScan(ctx, id, started.Add(time.Minute), summary, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type staleBody struct {
+	Stale bool `json:"stale"`
+}
+
+func TestStatusReportsListsOutOfDateWhenSettingsChangedSinceTheScan(t *testing.T) {
+	h := newHarness(t, nil)
+	current, err := h.config.Fingerprint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeScanWithFingerprint(t, h, current)
+
+	if got := decode[staleBody](t, h.do(http.MethodGet, "/api/status", "")); got.Stale {
+		t.Error("stale = true right after a scan with the current settings")
+	}
+
+	rec := h.do(http.MethodPut, "/api/settings", `{"rules": {"graceDays": 3}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/settings = %d %s", rec.Code, rec.Body)
+	}
+	if got := decode[staleBody](t, h.do(http.MethodGet, "/api/status", "")); !got.Stale {
+		t.Error("stale = false after the rules changed since the scan")
+	}
+}
+
+func TestStatusDoesNotCallListsOutOfDateWithoutAFingerprint(t *testing.T) {
+	h := newHarness(t, nil)
+	if got := decode[staleBody](t, h.do(http.MethodGet, "/api/status", "")); got.Stale {
+		t.Error("stale = true with no scan at all")
+	}
+
+	storeScanWithFingerprint(t, h, "")
+	if got := decode[staleBody](t, h.do(http.MethodGet, "/api/status", "")); got.Stale {
+		t.Error("stale = true for a scan from before fingerprints")
+	}
+}

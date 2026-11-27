@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c. 2026-11-24: how a plan is executed and recorded (6.7, 6.8, 6.11, 7.1, 7.2, 7.4, 7.5, 7.6, 8, 16.2), decided from the principles while building stage 2d.
+- **Amended:** 2026-11-19. Linking by content (6.6), chosen by the owner. Episode ranges (6.2), whole torrents (6.3) and data outside the library (6.7), decided from the owner's two principles in section 2 at the owner's request. 2026-11-22: the Host check and its setting (9.1, 10), after the review of pull request 1; whole files (6.3) and the duplicate episode number (6.2), found while building stage 2a. 2026-11-23: when ignores take effect, what can be ignored and what the ignored view shows (6.5, 7.5, 7.6), decided from the principles while building stage 2b. 2026-11-24: how a plan is built (6.5, 6.7, 6.8, 6.10, 7.1, 7.2), decided from the principles while building stage 2c. 2026-11-24: how a plan is executed and recorded (6.7, 6.8, 6.11, 7.1, 7.2, 7.4, 7.5, 7.6, 8, 16.2), decided from the principles while building stage 2d. 2026-11-26: selection and sorting (5.3), out-of-date lists (5.4, 7.6), testing a connection (5.6), what the status reports (7.6), how the UI is served (7.7), refused host names, reverse proxies and framing (10) and the frontend libraries (15), decided from the principles while building stage 3; navigation, the bulk bar and the settings pages (7.7), at the owner's request, the Scan button's place, the phone header and the panel animation (7.7), at the owner's request, collapsible scan details and the dark palette (7.7), at the owner's request, the scan details below the header (7.7), at the owner's request.
 - **Scope:** version 1
 
 ## 1. Purpose
@@ -96,13 +96,15 @@ Consequences of API-only:
 - **Delete** (bulk): builds a plan, shows it for confirmation, then executes it.
 - **Ignore** (bulk): hides the rows.
 - **Show ignored:** a switch that shows the ignored rows instead. In that view the bulk action is **Un-ignore**. An ignored row must be un-ignored before it can be deleted.
-- Lists can be sorted (size, watched date, title), filtered by text, and selected with "select all" over the filtered rows. The bulk bar shows the selected count and total size.
+- Lists can be sorted (size, watched date, title), filtered by text, and selected with "select all" over the filtered rows. The bulk bar shows the selected count and total size. The torrent list sorts by date added instead of watched date.
+- A bulk action applies only to rows the user can see: changing the filter deselects the rows it hides, and reloading a list deselects the rows it no longer holds. A delete or an ignore clears the selection.
 
 ### 5.4 Scan
 
 - A scan runs only when the user starts it. One scan runs at a time.
 - Scan results are stored, so the lists load immediately on later visits.
 - The header shows when the last scan ran, a summary (candidates per list, protected count, unmatched count, waiting count, errors), and the free space of the library root folders as reported by Sonarr and Radarr.
+- **Out of date.** When the rules or a connection's address or user name changed after the last scan started, the header says that the lists may be out of date and suggests a scan. Each scan records a fingerprint of those settings when it starts; a secret is not part of it, and neither is the order of the counting users, excluded categories or excluded tags. Nothing else depends on this: a plan always reads the apps again with the current settings (6.10).
 
 ### 5.5 History
 
@@ -112,7 +114,7 @@ A page listing every executed deletion: time, item, size, each step and its resu
 
 | Setting | Default | Notes |
 |---|---|---|
-| Connections | none | URL and credentials per app, each with a test button. See section 9. |
+| Connections | none | URL and credentials per app, each with a test button. The test uses the saved values, so it is offered once the changes are saved. See section 9. |
 | Counting users | none selected | Watched lists are not produced until at least one user is selected. |
 | Watched mode | all | "all": every counting user must have watched. "any": one is enough. |
 | Grace period | 0 days | Minimum time since the watched date. |
@@ -354,6 +356,7 @@ The UI is compiled to static files and embedded in the Go binary, so the whole a
 | `app` | Builds provider implementations from the current settings. | `config`, `providers` |
 | `api` | HTTP handlers; serves the embedded UI. | all of the above |
 | `web` | The browser UI. | the HTTP API only |
+| `webui` | Embeds the built UI in the binary and serves it (7.7). | nothing |
 
 `scan` contains every decision about what is a candidate. Because it does no I/O, each rule can be tested with plain data.
 
@@ -414,7 +417,7 @@ One SQLite file in the config directory.
 | Method and path | Purpose |
 |---|---|
 | `GET /api/health` | Liveness, for the container health check. |
-| `GET /api/status` | Connection health, last scan summary, free space. |
+| `GET /api/status` | Which apps are configured, dry run, the scan in progress, the last scan with its summary and free space, and whether the lists are out of date (5.4). It does not contact the apps, because the header polls it: a connection's health shows in its test (5.6) and in the errors of the last scan (8). |
 | `POST /api/scans` | Start a scan. |
 | `GET /api/scans/current` | Scan progress and result. |
 | `GET /api/candidates?list=…&ignored=…` | Rows of one list. |
@@ -428,11 +431,14 @@ One SQLite file in the config directory.
 
 ### 7.7 Web UI
 
-- **Pages:** Movies, Series, Torrents, History, Settings.
-- **Header:** Scan button, last scan time and summary, free space.
-- **Lists:** a table on wide screens and cards on narrow ones, with a bulk bar that stays visible while rows are selected.
-- **First run:** with no connections configured, the lists point the user to Settings.
-- **Theme:** follows the system light or dark setting.
+- **Pages:** Movies, Series, Torrents, History, Settings. Settings has three sub-pages, each with its own heading: Connections (with the dry run notice), Counting users and Rules. `/settings` opens Connections.
+- **Navigation:** a side panel on the left, with an icon and a label per page; the label is the link's name. The Settings sub-pages are nested below Settings and always shown with it. The current page is marked, and Settings is marked while one of its sub-pages is shown. A button in the header hides and shows the panel. On a wide screen the panel is shown by default beside the content, and the browser remembers whether it was hidden; a browser that cannot store it shows the panel. On a narrow screen the panel is hidden by default and opens as a drawer over the content, which Escape, a click beside it or a chosen page closes. While the drawer is open the header and the page behind it cannot be reached, by keyboard or by a screen reader, and closing it gives the focus back to the menu button.
+- **Header:** the menu button and the name on the left, the Scan button at the right end. The side panel opens and closes with a short animation, none when the system asks for reduced motion.
+- **Scan details:** last scan time and summary, free space, the last scan's error and the out-of-date notice. They sit in a strip of their own below the header, beside the side panel, on a surface of their own. The strip collapses to its first line ("Last scan …") by clicking that line, and the line still flags a problem; the browser remembers the choice.
+- **Lists:** a table on wide screens and cards on narrow ones. While rows are selected a bulk bar is fixed at the bottom of the window, over the width of the content and never over the side panel, and the list leaves room below its last row so that no row is hidden behind the bar.
+- **First run:** with no connections configured, the lists point the user to Settings, Connections.
+- **Theme:** follows the system light or dark setting, with a soft dark palette.
+- **Serving:** the server serves the UI's files at every path outside `/api/`, and the UI's page for any path it does not hold, so a page of the UI can be reloaded. A path under `assets/`, or one whose last part has a file extension, names a file and never a page of the UI: when the file is missing the answer is "not found". A binary built without the UI answers those paths with a page that says so.
 
 ## 8. Error handling
 
@@ -471,7 +477,9 @@ One SQLite file in the config directory.
 - API keys and the qBittorrent password are write-only: the API never returns them, only whether each is set and where it comes from.
 - Secrets saved in the UI are stored in the SQLite file, which is created readable by its owner only.
 - Requests that change anything must be JSON and carry a custom header, and the server rejects requests whose origin does not match the address it was reached on. This stops another website open in the user's browser from triggering deletions.
-- The server answers a request, read or change, only when its Host header is an IP address, `localhost`, or a host name listed in `REMOVARR_ALLOWED_HOSTS`. Otherwise a website could point its own domain name at removarr's address (DNS rebinding). The browser would then treat removarr as part of that site, and the site could read every answer and change every setting. A name such as `pi.local`, or the name a reverse proxy passes on, has to be listed. The health check is the one exception: it answers under any name, because it tells nothing about the library and a monitor may reach it by a container name.
+- Every answer forbids being shown in a frame of another page, so another site cannot lure the user into clicking through a deletion.
+- The server answers a request, read or change, only when its Host header is an IP address, `localhost`, or a host name listed in `REMOVARR_ALLOWED_HOSTS`. Otherwise a website could point its own domain name at removarr's address (DNS rebinding). The browser would then treat removarr as part of that site, and the site could read every answer and change every setting. A name such as `pi.local`, or the name a reverse proxy passes on, has to be listed. The health check is the one exception: it answers under any name, because it tells nothing about the library and a monitor may reach it by a container name. A refused request outside `/api/` gets a short page with the same message, so a browser shows why instead of a blank page; the UI shows the message of a refused API request.
+- A reverse proxy in front of removarr must pass the Host header on unchanged, and its name must be listed in `REMOVARR_ALLOWED_HOSTS`: a request that changes something must come from the address the request names.
 - removarr contacts only the apps configured in its settings. It does not follow a redirect to another host or port, or from https to http, because the API key would go with it.
 
 ## 11. Packaging and deployment
@@ -524,7 +532,7 @@ Approved by the owner on 2026-11-18. Versions are pinned in the implementation p
 | SQLite | `modernc.org/sqlite`, plain SQL, embedded migration files | Pure Go, so arm64 and amd64 builds need no C toolchain. |
 | App clients | Thin hand-written clients for Jellyfin, Sonarr, Radarr and qBittorrent | Only a few endpoints each, and exact control over the fields the rules depend on. |
 | Frontend base | Vite, React, TypeScript, Tailwind CSS, shadcn/ui | Chosen by the owner. |
-| Frontend libraries | TanStack Query, TanStack Table, React Router | shadcn's data table is built on TanStack Table. |
+| Frontend libraries | TanStack Query, React Router | Lists keep their selection in plain state: TanStack Table's row selection keeps rows the filter hides, which 5.3 forbids. |
 | Tooling and tests | pnpm; Go `testing`; Vitest; Playwright for the end-to-end test | Common, well-known defaults. |
 | Container | Multi-stage build, distroless base image, non-root user | Small image with nothing extra inside. |
 | CI and releases | GitHub Actions; image on `ghcr.io/removarr/removarr` | Free for public repositories and lives with the code. |

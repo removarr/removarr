@@ -27,6 +27,9 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 | `internal/store` | SQLite: settings, scans, candidates. Migrations in `internal/store/migrations` |
 | `internal/config` | Environment variables and saved settings; saved settings take priority |
 | `internal/app`, `internal/api` | Provider wiring and the HTTP API |
+| `internal/webui` | Embeds the built UI and serves it outside `/api/` |
+| `internal/e2e` | The real API on in-memory fake apps, for the end-to-end test. Never point it at a real config directory |
+| `web` | The browser UI: Vite, React, TypeScript. Builds into `internal/webui/dist` |
 | `docs/superpowers` | Spec and implementation plans |
 | `.agents/skills` | Skills for coding agents, in the Agent Skills format. `implement-issue` is the way of working for one issue, with the scripts for its review steps; they need `gh` |
 | `.claude/skills` | One link per skill into `.agents/skills`, because Claude Code looks for skills here. A new skill needs its link |
@@ -36,14 +39,24 @@ removarr suggests what to delete from a self-hosted media server: watched movies
 The checks. All of them must pass:
 
 ```
-gofmt -l .        # must print nothing
+gofmt -l cmd internal   # must print nothing; not `.`, which walks web/node_modules
 go vet ./...
 go test ./...
 go test -race ./internal/api/ ./internal/config/ ./internal/store/ ./internal/scanner/ ./internal/scan/ ./internal/planner/ ./internal/executor/ ./internal/gate/
 go build ./...
 ```
 
-CI runs `go vet` and `go test` on every pull request.
+The web checks:
+
+```
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web typecheck
+pnpm --dir web test
+pnpm --dir web build
+pnpm --dir web e2e      # needs `pnpm --dir web exec playwright install chromium` once
+```
+
+CI runs `go vet`, `go test` and every web check, `e2e` included, on every pull request.
 
 To start the server from the source tree. It runs until it is stopped, so it is not a check:
 
@@ -54,6 +67,7 @@ REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
 ## Rules for the code
 
 - **Dependencies:** Go 1.27 and the standard library. The only third-party module is `modernc.org/sqlite`. Adding one is the owner's decision.
+- **Frontend dependencies** are pinned exactly in `web/package.json`. Adding one is the owner's decision, as for Go modules.
 - **Only the executor changes an app.** `internal/executor` is the only code given the write interfaces (`providers.MovieWriter`, `SeriesWriter`, `DownloadRemover`). The scanner and the planner send GET requests only, plus the qBittorrent login. With `REMOVARR_DRY_RUN=true` nothing but GET, plus the qBittorrent login, reaches an app.
 - **No guessing from a partial answer** (spec 6.8, rule 5). If an app's answer is incomplete or inconsistent, return an error so the list shows it. Do not fill in a default.
 - **Secrets are write-only.** API keys and the qBittorrent password are never returned, logged or put into an error. An error about a URL never repeats the URL.

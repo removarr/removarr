@@ -10,6 +10,35 @@ What changed in removarr, written for the person who runs it.
 
 ## Unreleased
 
+### Stage 3: the web UI (issue #6)
+
+removarr now has a web UI, served by the same binary on the same port. Everything the API offers can be done in the browser.
+
+#### Scope
+
+- **Navigation:** a side panel on the left with an icon and a label per page, and the Settings pages nested below Settings. The menu button in the header hides and shows it. On a wide screen it sits beside the content and the browser remembers whether you hid it; on a narrow screen it opens as a drawer over the content and closes with Escape, a click beside it or a chosen page. It slides open and closed in a short animation, with none when the system asks for reduced motion.
+- **Header:** the menu button and the name on the left; the Scan button at the right end, with a dry run badge before it when `REMOVARR_DRY_RUN=true`.
+- **Scan details:** a strip of its own below the header, beside the side panel: when the last scan ran and its summary per list, the free space of the library root folders, the last scan's error, and a notice that the lists may be out of date when the rules or an app's address or user name changed since the last scan. A click on its first line, "Last scan …", collapses it to that line and brings it back; the line carries a "Needs attention" mark when the lists are out of date, a list could not be produced or the last scan failed, and the browser remembers whether you collapsed it.
+- **Lists:** Movies, Series and Torrents, each sorted by size, watched date or title, with a filter. Select all selects only the rows shown, and narrowing the filter or reloading the list drops selected rows that are no longer shown, so an action never names a row you cannot see. While rows are selected, a bulk bar with the count and size of the selection is fixed at the bottom of the window, beside the side panel, and the list leaves room so that its last row is never hidden behind it. Wide screens get a table, narrow ones cards. A list that could not be produced shows its error and no rows.
+- **Ignore:** ignore selected rows, and a "Show ignored" view that lists the ignores, says when each was made, which are no longer in the scan and what a held row waits for, and offers Un-ignore.
+- **Delete:** builds the plan for the selected rows and shows it grouped by app, with every step, the torrents removed and the ones that stay, the skipped rows with their reasons, and per torrent whether it keeps its data, lies partly outside the library or is linked by file size only. Nothing runs until you confirm that plan. Building can be cancelled; an execution cannot. The outcome shows every item and step with its result. A plan that expired or can no longer run offers to build it again from the same rows, with a new confirmation. A busy server's answer names the running job and is not retried.
+- **History:** every executed deletion, newest first, with its rows, size, outcome and each step, page by page.
+- **Settings:** three pages. Connections (`/settings/connections`, where `/settings` leads): the four connections with where each value comes from (saved in the UI or from the environment), secrets that are never shown and only replaced or cleared, and a Test button per app. Counting users (`/settings/counting-users`): the users from Jellyfin. Rules (`/settings/rules`). Each page saves on its own, and only the fields you changed are sent.
+- **Theme:** follows the system's light or dark setting. The dark theme is a soft dark gray-blue with off-white text, and every text colour keeps WCAG AA contrast on the surface it sits on.
+- **Status:** `GET /api/status` gains `stale`, and each scan records `settingsFingerprint`, a hash of the rules and of each app's URL and user name, never a secret. The order of the counting users, excluded categories and excluded tags does not count.
+- **Serving:** the UI is served at every path outside `/api/`, with the UI's page for a path it does not hold, so any page can be reloaded. A missing file under `assets/`, or with an extension, answers 404. A request under a refused host name outside `/api/` gets a short readable page instead of JSON.
+- **Framing:** every answer forbids being shown in a frame of another page (`X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`) and carries `X-Content-Type-Options: nosniff`, so another site cannot lure you into clicking through a deletion.
+
+#### Deployment
+
+- Build the UI before building removarr: `pnpm --dir web install --frozen-lockfile && pnpm --dir web build`, then `go build`. A binary built without it serves a page saying the UI is not built; the API works either way.
+- Behind a reverse proxy, the proxy must pass the Host header on unchanged and its name must be listed in `REMOVARR_ALLOWED_HOSTS`; otherwise every change from the UI is refused.
+- No database migration. A scan from before the update has no fingerprint and is never reported out of date; scan once to get the notice.
+
+#### Breaking changes
+
+- An unknown path under `/api/` now answers 404 with a JSON error, and a wrong method on a known API path answers 404 where it answered 405.
+
 ### Stage 2d: execute plans and record history (issue #5)
 
 removarr can now carry out a plan. This is the first stage that changes your apps. With `REMOVARR_DRY_RUN=true` it does everything except the change itself.

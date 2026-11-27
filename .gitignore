@@ -8,3 +8,10 @@
 .remember/
 .DS_Store
 /.claude/worktrees/
+/internal/webui/dist/*
+!/internal/webui/dist/.gitkeep
+/web/node_modules/
+/web/test-results/
+/web/playwright-report/
+/config-fake/
+/.playwright-mcp/

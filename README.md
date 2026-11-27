@@ -2,17 +2,55 @@
 
 removarr suggests what to delete from a self-hosted media server: watched movies, watched series and orphan torrents. It never deletes anything on its own.
 
-Status: early development. The server can scan Jellyfin, Sonarr, Radarr and qBittorrent and serve the three suggestion lists over a JSON API. It cannot delete anything yet, and there is no web UI yet. The design is in `docs/superpowers/specs/2026-11-18-removarr-design.md`.
+Status: early development. removarr scans Jellyfin, Sonarr, Radarr and qBittorrent, shows the three suggestion lists in a web UI, and deletes what you select after you confirm the plan, recording each deletion in a history. There is no container image yet. The design is in `docs/superpowers/specs/2026-11-18-removarr-design.md`.
 
 ## Development
 
-Requires Go 1.27.
+Requires Go 1.27, and Node 24 with pnpm for the web UI.
 
     go test ./...
+
+## Building
+
+The removarr binary embeds the web UI, so build the UI first:
+
+    pnpm --dir web install --frozen-lockfile
+    pnpm --dir web build
+    go build ./cmd/removarr
+
+A binary built without the UI answers every page with a note that the UI is not built; the API works either way.
+
+## Developing the UI
+
+The web UI is in `web/` and needs Node 24 and pnpm.
+
+    pnpm --dir web install
+
+Start removarr on port 7272, or the fake server, which serves the real API on a small fake library and never connects to an app:
+
+    go run ./internal/e2e/fakeserver -port 7272 -dir ./config-fake
+
+Never give the fake server removarr's real config directory as `-dir`: it opens the database there, overwrites the saved rules and replaces the stored scans with its fake library.
+
+Then start the development server, which forwards `/api` to port 7272:
+
+    pnpm --dir web dev
+
+The removarr binary embeds `internal/webui/dist`, so build the UI with `pnpm --dir web build` before `go build`. The checks of the UI are `pnpm --dir web test`, `pnpm --dir web typecheck` and the end-to-end test, which runs the fake server on port 7373 and needs the UI built and Chromium installed once:
+
+    pnpm --dir web exec playwright install chromium
+    pnpm --dir web build
+    pnpm --dir web e2e
+
+When port 7373 is taken, for example by a fake server you are looking at, run the end-to-end test on another port with `REMOVARR_E2E_PORT`:
+
+    REMOVARR_E2E_PORT=7374 pnpm --dir web e2e
 
 ## Running
 
     REMOVARR_CONFIG_DIR=./config go run ./cmd/removarr
+
+Then open `http://<address>:7272` in a browser. Set up the connections and the counting users under Settings, and start a scan from the header.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -25,7 +63,7 @@ Requires Go 1.27.
 | `REMOVARR_RADARR_URL`, `REMOVARR_RADARR_API_KEY` | | Radarr connection. |
 | `REMOVARR_QBITTORRENT_URL`, `REMOVARR_QBITTORRENT_USERNAME`, `REMOVARR_QBITTORRENT_PASSWORD` | | qBittorrent connection. |
 
-Connection settings saved through the API take priority over these variables.
+Connection settings saved in the UI, or through the API, take priority over these variables.
 
 When removarr is stopped during an execution, it starts no further item and waits up to two minutes for the one it is running to finish and be recorded. Give it more than that before it is killed: Docker waits 10 seconds by default (`docker stop -t 130`), systemd 90 seconds (`TimeoutStopSec=130`).
 
@@ -73,4 +111,8 @@ removarr answers when it is reached by an IP address or as `localhost`. To reach
 
     REMOVARR_ALLOWED_HOSTS=pi.local,removarr.lan
 
-List names only, without `http://` and without a port. The same applies to the name a reverse proxy passes on. A request under any other name gets a 403, except the health check at `/api/health`. This stops a website from pointing its own domain name at removarr's address and then reading and changing everything through your browser.
+List names only, without `http://` and without a port. A request under any other name gets a 403, except the health check at `/api/health`. This stops a website from pointing its own domain name at removarr's address and then reading and changing everything through your browser. In a browser, a refused name gets a short page that says so.
+
+### Behind a reverse proxy
+
+The proxy must pass the Host header on unchanged, and the name it is reached by must be listed in `REMOVARR_ALLOWED_HOSTS`. removarr refuses a request that changes something unless it comes from the address the request names, so a proxy that rewrites Host to removarr's own address breaks every Save, Scan and Delete in the UI.
