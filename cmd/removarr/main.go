@@ -32,7 +32,7 @@ func main() {
 		os.Exit(2)
 	}
 	if cmd == "healthcheck" {
-		os.Exit(runHealthcheck())
+		os.Exit(runHealthcheck(os.Getenv, os.Stderr))
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if err := run(log); err != nil {

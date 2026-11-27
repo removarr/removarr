@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/removarr/removarr/internal/config"
@@ -67,17 +66,17 @@ func healthcheck(ctx context.Context, port int, client *http.Client) error {
 }
 
 // runHealthcheck runs the healthcheck command and returns the process exit code.
-func runHealthcheck() int {
-	port, err := loadHealthEnv(os.Getenv)
+func runHealthcheck(getenv func(string) string, stderr io.Writer) int {
+	port, err := loadHealthEnv(getenv)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "removarr healthcheck:", err)
+		fmt.Fprintln(stderr, "removarr healthcheck:", err)
 		return 1
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), healthTimeout)
 	defer cancel()
 	client := &http.Client{CheckRedirect: httpjson.SameHostRedirects}
 	if err := healthcheck(ctx, port, client); err != nil {
-		fmt.Fprintln(os.Stderr, "removarr healthcheck:", err)
+		fmt.Fprintln(stderr, "removarr healthcheck:", err)
 		return 1
 	}
 	return 0

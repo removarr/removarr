@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"net/http"
@@ -42,19 +43,48 @@ func TestHealthcheckPassesWhenTheServerReportsOK(t *testing.T) {
 	}
 }
 
-func TestHealthcheckUsesTheConfiguredPort(t *testing.T) {
-	port := healthServer(t, okHealth)
-	env, err := loadHealthEnv(func(k string) string {
+func portEnv(port int) func(string) string {
+	return func(k string) string {
 		if k == "REMOVARR_PORT" {
 			return strconv.Itoa(port)
 		}
 		return ""
-	})
+	}
+}
+
+func TestRunHealthcheckReadsTheConfiguredPort(t *testing.T) {
+	port := healthServer(t, okHealth)
+	var stderr bytes.Buffer
+	if code := runHealthcheck(portEnv(port), &stderr); code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr.String())
+	}
+}
+
+func TestRunHealthcheckFailsOnThePortNothingListensOn(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if env != port {
-		t.Fatalf("port = %d, want %d", env, port)
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	var stderr bytes.Buffer
+	if code := runHealthcheck(portEnv(port), &stderr); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if stderr.Len() == 0 {
+		t.Fatal("nothing written to stderr")
+	}
+}
+
+func TestRunHealthcheckFailsOnAnInvalidPort(t *testing.T) {
+	var stderr bytes.Buffer
+	if code := runHealthcheck(func(k string) string {
+		if k == "REMOVARR_PORT" {
+			return "not-a-port"
+		}
+		return ""
+	}, &stderr); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
 	}
 }
 
