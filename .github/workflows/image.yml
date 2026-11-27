@@ -54,7 +54,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ !github.event.release.prerelease }}
             type=semver,pattern={{major}},enable=${{ !github.event.release.prerelease }}
           flavor: |
-            latest=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+            latest=${{ github.event_name == 'release' && !github.event.release.prerelease && !contains(github.ref_name, '-') }}
       - if: github.event_name == 'release'
         uses: docker/login-action@v4
         with:
